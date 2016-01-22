@@ -12,7 +12,8 @@ zipped_files =					\
 	japan-88x100-v1.3.sav.gz		\
 	north_america_116x100-v1.2.sav.gz	\
 	europe_1901.sav.gz			\
-	tutorial.sav.gz
+	tutorial.sav.gz \
+	feudalciv.sav.gz
 
 unzipped_files =				\
 	british-isles-85x80-v2.80.sav		\
@@ -26,7 +27,8 @@ unzipped_files =				\
 	japan-88x100-v1.3.sav			\
 	north_america_116x100-v1.2.sav		\
 	europe_1901.sav				\
-	tutorial.sav
+	tutorial.sav \
+	feudalciv.sav
 
 
 ## Override automake so that "make install" puts these in proper place:
