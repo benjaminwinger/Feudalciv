@@ -1438,6 +1438,7 @@ AC_CONFIG_FILES([Makefile
           data/civ2civ3/Makefile
 	  data/civ1/Makefile
 	  data/civ2/Makefile
+      data/feudalciv/Makefile
 	  data/scenarios/Makefile
 	  data/nation/Makefile
 	  data/themes/Makefile
