@@ -677,8 +677,8 @@ static bool city_reduce_size_and_population(struct city *pcity, citizens pop_los
   city_size_add(pcity, -pop_loss);
   if (reduce_pop) {
     city_population_add(pcity,
-            city_population_for_size(city_size_get(pcity) - pop_loss)
-            - city_population_for_size(city_size_get(pcity)));
+            city_population_for_size(city_size_get(pcity))
+            - city_population_for_size(city_size_get(pcity) + pop_loss));
   }
   map_claim_border(pcity->tile, pcity->owner);
 
