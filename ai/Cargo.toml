@@ -1,0 +1,12 @@
+[package]
+
+name = "freeciv_ai"
+version = "2.5.3"
+links = "aicommon"
+build = "build.rs"
+
+[dependencies]
+
+[lib]
+name = "freeciv_ai"
+path = "lib.rs"

@@ -1,0 +1,15 @@
+[package]
+
+name = "freeciv_srv"
+version = "2.5.3"
+links = "freeciv-srv"
+build = "build.rs"
+
+[dependencies]
+freeciv = { path = "../common" }
+freeciv_utility = { path = "../utility" }
+freeciv_ai = { path = "../ai" }
+
+[lib]
+name = "freeciv_srv"
+path = "lib.rs"

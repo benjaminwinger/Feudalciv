@@ -1,0 +1,13 @@
+[package]
+
+name = "freeciv"
+version = "2.5.3"
+links = "freeciv"
+build = "build.rs"
+
+[dependencies]
+freeciv_scriptcore = { path = "scriptcore" }
+
+[lib]
+name = "freeciv"
+path = "lib.rs"

@@ -1,0 +1,9 @@
+[package]
+
+name = "freeciv-server-rust"
+version = "0.0.1"
+
+[dependencies]
+freeciv_srv = { path = "../server" } 
+freeciv = { path = "../common" } 
+freeciv_ai = { path = "../ai" } 
