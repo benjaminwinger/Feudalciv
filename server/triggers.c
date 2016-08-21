@@ -35,6 +35,7 @@
 #include "packets.h"
 #include "player.h"
 #include "tech.h"
+#include "unittype.h"
 
 /* common/scriptcore */
 #include "luascript_types.h"
@@ -65,6 +66,7 @@ static int trigger_timeout = 3;
 static struct {
   /* A single list containing every trigger. */
   struct trigger_list *triggers;
+  struct trigger_list *dated_triggers;
 
   /* A single list containing triggers that are awaiting a response. */
   struct trigger_response_list *responses;
@@ -83,11 +85,12 @@ struct trigger_list *get_triggers()
   Add trigger to ruleset cache.
 **************************************************************************/
 struct trigger *trigger_new(const char * name, const char * title, const char * desc,
-        const char * mtth, bool repeatable, int num_responses, const char **responses,
-        int default_response, int ai_response)
+        int mtth, bool repeatable, int num_responses, const char **responses,
+        int default_response, int ai_response, bool manual)
 {
   struct trigger *ptrigger;
   int i;
+  int year, tmpyear;
 
   /* Create the trigger. */
   ptrigger = fc_malloc(sizeof(*ptrigger));
@@ -100,6 +103,7 @@ struct trigger *trigger_new(const char * name, const char * title, const char * 
   ptrigger->responses = fc_malloc(num_responses * sizeof(const char *));
   ptrigger->default_response = default_response;
   ptrigger->ai_response = ai_response;
+  ptrigger->manual = manual;
   for (i = 0; i < num_responses; i++) {
     ptrigger->responses[i] = fc_strdup(responses[i]);
   }
@@ -108,6 +112,12 @@ struct trigger *trigger_new(const char * name, const char * title, const char * 
 
   /* Now add the trigger to the ruleset cache. */
   trigger_list_append(trigger_cache.triggers, ptrigger);
+
+  /*requirement_vector_iterate(&ptrigger->reqs, preq) {
+    if (preq->source.kind == VUT_MINYEAR) {
+      while (
+    }
+  } requirement_vector_iterate_end;*/
 
   return ptrigger;
 }
@@ -129,7 +139,7 @@ struct trigger *trigger_copy(struct trigger *old)
 {
   struct trigger *new_trigger = trigger_new(old->name, old->title, old->desc,
           old->mtth, old->repeatable, old->responses_num, old->responses,
-          old->default_response, old->ai_response);
+          old->default_response, old->ai_response, old->manual);
 
   requirement_vector_iterate(&old->reqs, preq) {
     trigger_req_append(new_trigger, *preq);
@@ -273,6 +283,7 @@ void get_trigger_signal_arg_list(const struct trigger * ptrigger, int * nargs, i
       default:
         continue;
       }
+      break;
     case REQ_RANGE_PLAYER:
       args[*nargs] = API_TYPE_PLAYER;
       break;
@@ -452,13 +463,14 @@ void trigger_by_name(const struct player *pplayer, const char * name, int nargs,
 
   trigger_by_name_array(pplayer, name, nargs, arg_list);
   va_end(args);
+  FC_FREE(arg_list);
 }
 
 struct trigger_response * remove_trigger_response_from_cache(const struct player *pplayer, const char * name)
 {
   struct trigger_response * matching_response = NULL;
   trigger_response_list_iterate(trigger_cache.responses, presponse) {
-    if (player_number(presponse->player) == player_number(pplayer) && strcmp(name, presponse->trigger->name) == 0) {
+    if (((presponse->player == NULL && pplayer == NULL) || (player_number(presponse->player) == player_number(pplayer))) && strcmp(name, presponse->trigger->name) == 0) {
        matching_response = presponse;
        break;
     }
@@ -745,4 +757,75 @@ void trigger_cache_load(struct section_file *file, const char *section)
     presponse->player = pplayer;
     trigger_response_list_append(trigger_cache.responses, presponse);
   }
+}
+
+static bool req_matches_unit(struct requirement *preq, struct unit *punit)
+{
+  if (preq->source.kind == VUT_UTYPE) {
+    return utype_number(punit->utype) == utype_number(preq->source.value.utype);
+  } else if (preq->source.kind == VUT_UTFLAG) {
+    return utype_has_flag(punit->utype, preq->source.value.unitflag);
+  }
+}
+
+void check_triggers()
+{
+  trigger_list_iterate(trigger_cache.triggers, ptrigger) {
+    if (ptrigger->manual) continue;
+    bool requirements_met = TRUE;
+    void ** args = fc_calloc(ptrigger->reqs.size * 2, sizeof(void*));
+    int index = 0;
+    struct player * triggerplayer = NULL;
+    requirement_vector_iterate(&ptrigger->reqs, preq) {
+      fc_assert(index < ptrigger->reqs.size * 2);
+      switch (preq->range) {
+      case REQ_RANGE_WORLD:
+        switch (preq->source.kind) {
+        case VUT_MINYEAR:
+          if (game.info.year < preq->source.value.minyear) requirements_met = FALSE;
+          args[index] = API_TYPE_INT;
+          args[index + 1] = game.info.year;
+          break;
+        default:
+          continue;
+        }
+      case REQ_RANGE_PLAYER:
+        break;
+      case REQ_RANGE_CITY:
+        break;
+      case REQ_RANGE_CONTINENT:
+      case REQ_RANGE_ADJACENT:
+      case REQ_RANGE_CADJACENT:
+      case REQ_RANGE_LOCAL:
+        switch (preq->source.kind) {
+        case VUT_TERRAIN:
+          break;
+        case VUT_UTYPE:
+        case VUT_UTFLAG:
+        case VUT_UCLASS:
+        case VUT_UCFLAG:
+          players_iterate_alive(pplayer) {
+            unit_list_iterate(pplayer->units, punit) {
+              if (req_matches_unit(preq, punit)) {
+                args[index] = API_TYPE_UNIT;
+                args[index + 1] = punit;
+                triggerplayer = pplayer;
+              }
+            } unit_list_iterate_end;
+          } players_iterate_alive_end;
+          break;
+        default:
+          continue;
+        }
+        break;
+      }
+      index += 2;
+      if (preq->negated) requirements_met = !requirements_met;
+      if (!requirements_met) break;
+    } requirement_vector_iterate_end;
+    if (requirements_met && index == ptrigger->reqs.size * 2) {
+      trigger_by_name_array(triggerplayer, ptrigger->name, ptrigger->reqs.size, args);
+    }
+    FC_FREE(args);
+  } trigger_list_iterate_end;
 }

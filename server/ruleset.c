@@ -1,4 +1,4 @@
-/********************************************************************** 
+/**********************************************************************
  Freeciv - Copyright (C) 1996 - A Kjeldberg, L Gregersen, P Unold
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -535,7 +535,7 @@ static bool lookup_building(struct section_file *file,
 {
   const char *sval;
   bool ok = TRUE;
- 
+
   sval = secfile_lookup_str_default(file, NULL, "%s.%s", prefix, entry);
   if (!sval || strcmp(sval, "None") == 0) {
     *result = B_NEVER;
@@ -562,7 +562,7 @@ static bool lookup_building(struct section_file *file,
 **************************************************************************/
 static bool lookup_unit_list(struct section_file *file, const char *prefix,
                              const char *entry,
-                             struct unit_type **output, 
+                             struct unit_type **output,
                              const char *filename)
 {
   const char **slist;
@@ -747,7 +747,7 @@ static bool lookup_unit_type(struct section_file *file,
                              const char *description)
 {
   const char *sval;
-  
+
   sval = secfile_lookup_str_default(file, "None", "%s.%s", prefix, entry);
 
   if (strcmp(sval, "None") == 0) {
@@ -805,7 +805,7 @@ static bool lookup_move_type(struct section_file *file,
 {
   const char *sval;
   enum unit_move_type mt;
-  
+
   sval = secfile_lookup_str_default(file, NULL, "%s", entry);
   if (sval == NULL) {
     *result = unit_move_type_invalid();
@@ -1289,7 +1289,7 @@ static bool load_ruleset_techs(struct section_file *file)
     a->preset_cost =
         secfile_lookup_int_default(file, -1, "%s.%s", sec_name, "cost");
     a->num_reqs = 0;
-    
+
     i++;
   } advance_iterate_end;
 
@@ -1849,7 +1849,7 @@ static bool load_ruleset_units(struct section_file *file)
         break;
       }
       u->uclass = pclass;
-    
+
       sz_strlcpy(u->sound_move,
                  secfile_lookup_str_default(file, "-", "%s.sound_move",
                                             sec_name));
@@ -2092,7 +2092,7 @@ static bool load_ruleset_units(struct section_file *file)
       const int i = utype_index(u);
 
       BV_CLR_ALL(u->roles);
-    
+
       slist = secfile_lookup_str_vec(file, &nval, "%s.roles",
                                      section_name(section_list_get(sec, i)));
       for (j = 0; j < nval; j++) {
@@ -2122,7 +2122,7 @@ static bool load_ruleset_units(struct section_file *file)
     } unit_type_iterate_end;
   }
 
-  if (ok) { 
+  if (ok) {
     /* Some more consistency checking: */
     unit_type_iterate(u) {
 
@@ -2273,7 +2273,7 @@ static bool load_ruleset_buildings(struct section_file *file)
         break;
       }
       if (advance_by_number(A_NONE) == b->obsolete_by) {
-        /* 
+        /*
          * The ruleset can specify "None" for a never-obsoleted
          * improvement.  Currently this means A_NONE, which is an
          * unnecessary special-case.  We use A_NEVER to flag a
@@ -3007,7 +3007,7 @@ static bool load_ruleset_terrain(struct section_file *file)
           BV_SET(pbase2->conflicts, base_index(pbase));
         }
       }
-    
+
       free(slist);
 
       if (!ok) {
@@ -3312,7 +3312,7 @@ static bool load_ruleset_governments(struct section_file *file)
         g->ai.better = NULL;
       }
       requirement_vector_copy(&g->reqs, reqs);
-    
+
       sz_strlcpy(g->graphic_str,
                  secfile_lookup_str(file, "%s.graphic", sec_name));
       sz_strlcpy(g->graphic_alt,
@@ -4226,7 +4226,7 @@ static bool load_ruleset_nations(struct section_file *file)
   if (ok) {
     /* Update cached number of playable nations in the current set */
     count_playable_nations();
-    
+
     /* Sanity checks on all sets */
     nation_sets_iterate(pset) {
       int num_playable = 0, barb_land_count = 0, barb_sea_count = 0;
@@ -4381,7 +4381,7 @@ static bool load_ruleset_cities(struct section_file *file)
   if (ok) {
     /* City Parameters */
 
-    game.info.celebratesize = 
+    game.info.celebratesize =
       secfile_lookup_int_default(file, GAME_DEFAULT_CELEBRATESIZE,
                                  "parameters.celebrate_size_limit");
     game.info.add_to_size_limit =
@@ -4390,13 +4390,13 @@ static bool load_ruleset_cities(struct section_file *file)
       secfile_lookup_bool_default(file, GAME_DEFAULT_ANGRYCITIZEN,
                                   "parameters.angry_citizens");
 
-    game.info.changable_tax = 
+    game.info.changable_tax =
       secfile_lookup_bool_default(file, TRUE, "parameters.changable_tax");
-    game.info.forced_science = 
+    game.info.forced_science =
       secfile_lookup_int_default(file, 0, "parameters.forced_science");
-    game.info.forced_luxury = 
+    game.info.forced_luxury =
       secfile_lookup_int_default(file, 100, "parameters.forced_luxury");
-    game.info.forced_gold = 
+    game.info.forced_gold =
       secfile_lookup_int_default(file, 0, "parameters.forced_gold");
     if (game.info.forced_science + game.info.forced_luxury
         + game.info.forced_gold != 100) {
@@ -4438,22 +4438,22 @@ static bool load_ruleset_cities(struct section_file *file)
       struct requirement_vector *reqs;
       const char *sec_name = section_name(section_list_get(sec, i));
 
-      sz_strlcpy(city_styles[i].graphic, 
+      sz_strlcpy(city_styles[i].graphic,
                  secfile_lookup_str(file, "%s.graphic", sec_name));
-      sz_strlcpy(city_styles[i].graphic_alt, 
+      sz_strlcpy(city_styles[i].graphic_alt,
                  secfile_lookup_str(file, "%s.graphic_alt", sec_name));
-      sz_strlcpy(city_styles[i].oceanic_graphic, 
+      sz_strlcpy(city_styles[i].oceanic_graphic,
                  secfile_lookup_str_default(file, "",
                                             "%s.oceanic_graphic", sec_name));
-      sz_strlcpy(city_styles[i].oceanic_graphic_alt, 
+      sz_strlcpy(city_styles[i].oceanic_graphic_alt,
                  secfile_lookup_str_default(file, "",
                                             "%s.oceanic_graphic_alt",
                                             sec_name));
       sz_strlcpy(city_styles[i].citizens_graphic,
-                 secfile_lookup_str_default(file, "-", 
+                 secfile_lookup_str_default(file, "-",
                                             "%s.citizens_graphic", sec_name));
-      sz_strlcpy(city_styles[i].citizens_graphic_alt, 
-                 secfile_lookup_str_default(file, "generic", 
+      sz_strlcpy(city_styles[i].citizens_graphic_alt,
+                 secfile_lookup_str_default(file, "generic",
                                             "%s.citizens_graphic_alt", sec_name));
 
       reqs = lookup_req_list(file, sec_name, "reqs", city_style_rule_name(i));
@@ -4599,10 +4599,14 @@ static bool load_ruleset_triggers(struct section_file *file)
     const char **responses;
     struct requirement_vector *reqs;
     int default_response, ai_response;
+    int mtth;
+    bool manual;
+
+    responses = secfile_lookup_str_vec(file, (size_t*)&nresponses, "%s.responses", sec_name);
 
     title = secfile_lookup_str(file, "%s.title", sec_name);
 
-    if (title == NULL) {
+    if (title == NULL && nresponses > 0) {
       ruleset_error(LOG_ERROR, "\"%s\" [%s] missing trigger title.", filename, sec_name);
       ok = FALSE;
       break;
@@ -4610,7 +4614,7 @@ static bool load_ruleset_triggers(struct section_file *file)
 
     desc = secfile_lookup_str(file, "%s.desc", sec_name);
 
-    if (desc == NULL) {
+    if (desc == NULL && nresponses > 0) {
       ruleset_error(LOG_ERROR, "\"%s\" [%s] missing trigger description.", filename, sec_name);
       ok = FALSE;
       break;
@@ -4620,14 +4624,14 @@ static bool load_ruleset_triggers(struct section_file *file)
 
     mtth = secfile_lookup_str(file, "%s.mtth", sec_name);
 
-    responses = secfile_lookup_str_vec(file, (size_t*)&nresponses, "%s.responses", sec_name);
+    manual = secfile_lookup_bool_default(file, FALSE, "%s.manual", sec_name);
 
     if (!secfile_lookup_int(file, &default_response, "%s.default_response", sec_name) && nresponses > 0) {
       ruleset_error(LOG_ERROR, "\"%s\" [%s] missing trigger default response but trigger has %d responses.", filename, sec_name, nresponses);
       ok = FALSE;
       break;
     }
-    if (default_response == 0 || default_response > nresponses) {
+    if (nresponses > 0 && (default_response == 0 || default_response > nresponses)) {
       ruleset_error(LOG_ERROR, "\"%s\" [%s] invalid default response; trigger default response should be indexed from 1.", filename, sec_name);
       ok = FALSE;
       break;
@@ -4644,7 +4648,7 @@ static bool load_ruleset_triggers(struct section_file *file)
       break;
     }
 
-    ptrigger = trigger_new(sec_name, title, desc, mtth, repeatable, nresponses, responses, default_response, ai_response);
+    ptrigger = trigger_new(sec_name, title, desc, mtth, repeatable, nresponses, responses, default_response, ai_response, manual);
 
     reqs = lookup_req_list(file, sec_name, "reqs", sec_name);
     if (reqs == NULL) {
@@ -5439,7 +5443,7 @@ static void send_ruleset_units(struct conn_list *dest)
                     u->move_rate / SINGLE_MOVE, utype_name_translation(u));
         }
       } conn_list_iterate_end;
-      notify_conn(oldconns, NULL, E_CONNECTION, ftc_warning, 
+      notify_conn(oldconns, NULL, E_CONNECTION, ftc_warning,
                   "Warning: your client is too old to cope with the large "
                   "move rate (%d) of %s in this ruleset; expect trouble "
                   "with this unit.",

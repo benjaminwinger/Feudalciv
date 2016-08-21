@@ -35,6 +35,7 @@ struct trigger {
   const char * name;
   const char * mtth;
   bool repeatable;
+  bool manual;
 
   const char * title;
   const char * desc;
@@ -73,8 +74,8 @@ struct trigger_response {
 #define trigger_response_list_iterate_end LIST_ITERATE_END
 
 struct trigger *trigger_new(const char * name, const char * title, const char * desc,
-        const char * mtth, bool repeatable, int num_responses, const char **responses,
-        int default_response, int ai_response);
+        int mtth, bool repeatable, int num_responses, const char **responses,
+        int default_response, int ai_response, bool manual);
 struct trigger *trigger_copy(struct trigger *old);
 void trigger_req_append(struct trigger *ptrigger, struct requirement req);
 void trigger_signal_create(struct trigger *ptrigger);
@@ -104,6 +105,8 @@ void set_trigger_timeout(int timout);
 void trigger_cache_load(struct section_file *file, const char *section);
 
 void trigger_cache_save(struct section_file *file, const char *section);
+
+void check_triggers();
 
 #ifdef __cplusplus
 }

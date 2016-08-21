@@ -1233,6 +1233,7 @@ static void end_turn(void)
 
   log_debug("Sendyeartoclients");
   send_year_to_clients(game.info.year);
+  check_triggers();
 }
 
 /**************************************************************************
