@@ -196,6 +196,11 @@ struct universal universal_by_rule_name(const char *kind,
       return source;
     }
     break;
+  case VUT_DIPLSTATE:
+    source.value.diplstate = diplstate_by_rule_name(value);
+    if (source.value.diplstate != DS_LAST) {
+      return source;
+    }
   case VUT_COUNT:
     break;
   }
@@ -322,6 +327,9 @@ struct universal universal_by_number(const enum universals_n kind,
   case VUT_CITYTILE:
     source.value.citytile = value;
     return source;
+  case VUT_DIPLSTATE:
+    source.value.diplstate = value;
+    return source;
   case VUT_COUNT:
     break;
   }
@@ -401,6 +409,8 @@ int universal_number(const struct universal *source)
     return source->value.terrainalter;
   case VUT_CITYTILE:
     return source->value.citytile;
+  case VUT_DIPLSTATE:
+    return source->value.diplstate;
   case VUT_COUNT:
     break;
   }
@@ -463,6 +473,7 @@ struct requirement req_from_str(const char *type, const char *range,
     case VUT_TECHFLAG:
     case VUT_NATION:
     case VUT_AI_LEVEL:
+    case VUT_DIPLSTATE:
       req.range = REQ_RANGE_PLAYER;
       break;
     case VUT_MINYEAR:
@@ -532,6 +543,9 @@ struct requirement req_from_str(const char *type, const char *range,
   case VUT_NONE:
     invalid = FALSE;
     break;
+  case VUT_DIPLSTATE:
+    invalid = (req.range != REQ_RANGE_PLAYER);
+    break;
   case VUT_COUNT:
     break;
   }
@@ -570,6 +584,7 @@ struct requirement req_from_str(const char *type, const char *range,
     case VUT_TERRFLAG:
     case VUT_NATIONALITY:
     case VUT_TECHFLAG:
+    case VUT_DIPLSTATE:
       /* Most requirements don't support 'survives'. */
       invalid = survives;
       break;
@@ -1345,6 +1360,38 @@ static enum fc_tristate is_nation_in_range(const struct player *target_player,
 }
 
 /****************************************************************************
+  Is there a nation with a given diplstate within range of the target?
+****************************************************************************/
+static enum fc_tristate is_diplstate_in_range(const struct player *target_player,
+                                           enum req_range range, bool survives,
+                                           const enum diplstate_type ds)
+{
+  switch (range) {
+  case REQ_RANGE_PLAYER:
+    players_iterate_alive(pplayer) {
+      if (player_number(pplayer) != player_number(target_player) &&
+              player_diplstate_get(target_player, pplayer)->type == ds) {
+        return TRI_YES;
+      }
+    } players_iterate_alive_end;
+    return TRI_NO;
+    break;
+  case REQ_RANGE_WORLD:
+  case REQ_RANGE_LOCAL:
+  case REQ_RANGE_CADJACENT:
+  case REQ_RANGE_ADJACENT:
+  case REQ_RANGE_CITY:
+  case REQ_RANGE_CONTINENT:
+  case REQ_RANGE_COUNT:
+    break;
+  }
+
+  fc_assert_msg(FALSE, "Invalid range %d.", range);
+
+  return TRI_MAYBE;
+}
+
+/****************************************************************************
   Is there a nationality within range of the target?
 ****************************************************************************/
 static enum fc_tristate is_nationality_in_range(const struct city *target_city,
@@ -1686,6 +1733,10 @@ bool is_req_active(const struct player *target_player,
                                   req->source.value.citytile);
     }
     break;
+  case VUT_DIPLSTATE:
+    eval = is_diplstate_in_range(target_player, req->range, req->survives,
+                              req->source.value.diplstate);
+    break;
   case VUT_COUNT:
     log_error("is_req_active(): invalid source kind %d.", req->source.kind);
     return FALSE;
@@ -1771,6 +1822,7 @@ bool is_req_unchanging(const struct requirement *req)
   case VUT_UCLASS:	/* Not sure about this one */
   case VUT_UCFLAG:	/* Not sure about this one */
   case VUT_ROAD:
+  case VUT_DIPLSTATE:
     return FALSE;
   case VUT_SPECIAL:
   case VUT_TERRAIN:
@@ -1855,6 +1907,8 @@ bool are_universals_equal(const struct universal *psource1,
     return psource1->value.terrainalter == psource2->value.terrainalter;
   case VUT_CITYTILE:
     return psource1->value.citytile == psource2->value.citytile;
+  case VUT_DIPLSTATE:
+    return psource1->value.diplstate == psource2->value.diplstate;
   case VUT_COUNT:
     break;
   }
@@ -1930,6 +1984,8 @@ const char *universal_rule_name(const struct universal *psource)
     return road_rule_name(psource->value.road);
   case VUT_TERRAINALTER:
     return terrain_alteration_name(psource->value.terrainalter);
+  case VUT_DIPLSTATE:
+    return diplstate_text(psource->value.diplstate);
   case VUT_COUNT:
     break;
   }
@@ -2055,6 +2111,8 @@ const char *universal_name_translation(const struct universal *psource,
   case VUT_CITYTILE:
     fc_strlcat(buf, _("City center"), bufsz);
     return buf;
+  case VUT_DIPLSTATE:
+    fc_strlcat(buf, diplstate_text(psource->value.diplstate), bufsz);
   case VUT_COUNT:
     break;
   }

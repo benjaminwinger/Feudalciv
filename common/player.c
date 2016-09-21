@@ -1214,25 +1214,53 @@ const char *love_text(const int love)
   }
 }
 
+static const char *ds_names[DS_LAST] =
+{
+  N_("?diplomatic_state:Armistice"),
+  N_("?diplomatic_state:War"),
+  N_("?diplomatic_state:Cease-fire"),
+  N_("?diplomatic_state:Peace"),
+  N_("?diplomatic_state:Alliance"),
+  N_("?diplomatic_state:Never met"),
+  N_("?diplomatic_state:Team")
+};
+
+static const char *ds_simple_names[DS_LAST] =
+{
+  N_("Armistice"),
+  N_("War"),
+  N_("Cease-fire"),
+  N_("Peace"),
+  N_("Alliance"),
+  N_("Never met"),
+  N_("Team")
+};
+
 /**************************************************************************
   Return a diplomatic state as a human-readable string
 **************************************************************************/
 const char *diplstate_text(const enum diplstate_type type)
 {
-  static const char *ds_names[DS_LAST] = 
-  {
-    N_("?diplomatic_state:Armistice"),
-    N_("?diplomatic_state:War"), 
-    N_("?diplomatic_state:Cease-fire"),
-    N_("?diplomatic_state:Peace"),
-    N_("?diplomatic_state:Alliance"),
-    N_("?diplomatic_state:Never met"),
-    N_("?diplomatic_state:Team")
-  };
-
   fc_assert_ret_val_msg(0 <= type && type < DS_LAST, NULL,
                         "Bad diplstate_type: %d.", type);
   return Q_(ds_names[type]);
+}
+
+/**************************************************************************
+  Return the diplomatic state corresponding to the given name
+**************************************************************************/
+enum diplstate_type diplstate_by_rule_name(const char *name)
+{
+  const char *qname = Qn_(name);
+  int i;
+
+  for (i = 0; i < DS_LAST; i++) {
+    if (0 == fc_strcasecmp(ds_simple_names[i], qname)) {
+      return (enum diplstate_type)i;
+    }
+  }
+
+  return DS_LAST;
 }
 
 /***************************************************************

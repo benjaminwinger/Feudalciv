@@ -268,6 +268,22 @@ enum req_problem_type {
   RPT_CERTAIN   /* We want to know if it is certain that effect is active  */
 };
 
+/* Diplomatic states (how one player views another).
+ * (Some diplomatic states are "pacts" (mutual agreements), others aren't.)
+ *
+ * Adding to or reordering this array will break many things.
+ */
+enum diplstate_type {
+  DS_ARMISTICE = 0,
+  DS_WAR,
+  DS_CEASEFIRE,
+  DS_PEACE,
+  DS_ALLIANCE,
+  DS_NO_CONTACT,
+  DS_TEAM,
+  DS_LAST	/* leave this last */
+};
+
 #define REVERSED_RPT(x) \
   (x == RPT_CERTAIN ? RPT_POSSIBLE : RPT_CERTAIN)
 
@@ -290,6 +306,7 @@ typedef union {
 
   enum ai_level ai_level;
   enum citytile_type citytile;
+  enum diplstate_type diplstate;
   int minsize;
   int minyear;
   Output_type_id outputtype;
@@ -361,6 +378,8 @@ typedef union {
 #define SPECENUM_VALUE23NAME "Nationality"
 #define SPECENUM_VALUE24 VUT_TECHFLAG
 #define SPECENUM_VALUE24NAME "TechFlag"
+#define SPECENUM_VALUE25 VUT_DIPLSTATE
+#define SPECENUM_VALUE25NAME "DiplState"
 #define SPECENUM_COUNT VUT_COUNT
 #include "specenum_gen.h"
 

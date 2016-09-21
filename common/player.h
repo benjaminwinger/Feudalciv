@@ -137,22 +137,6 @@ struct player_ai {
   struct ai_trait *traits;
 };
 
-/* Diplomatic states (how one player views another).
- * (Some diplomatic states are "pacts" (mutual agreements), others aren't.)
- *
- * Adding to or reordering this array will break many things.
- */
-enum diplstate_type {
-  DS_ARMISTICE = 0,
-  DS_WAR,
-  DS_CEASEFIRE,
-  DS_PEACE,
-  DS_ALLIANCE,
-  DS_NO_CONTACT,
-  DS_TEAM,
-  DS_LAST	/* leave this last */
-};
-
 enum dipl_reason {
   DIPL_OK, DIPL_ERROR, DIPL_SENATE_BLOCKING,
   DIPL_ALLIANCE_PROBLEM_US, DIPL_ALLIANCE_PROBLEM_THEM
@@ -365,6 +349,7 @@ bool ai_handicap(const struct player *pplayer, enum handicap_type htype);
 bool ai_fuzzy(const struct player *pplayer, bool normal_decision);
 
 const char *diplstate_text(const enum diplstate_type type);
+enum diplstate_type diplstate_by_rule_name(const char *name);
 const char *love_text(const int love);
 
 enum diplstate_type cancel_pact_result(enum diplstate_type oldstate);
