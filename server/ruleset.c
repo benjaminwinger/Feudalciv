@@ -4591,7 +4591,7 @@ static bool load_ruleset_triggers(struct section_file *file)
   /* Parse triggers and add them to the triggers ruleset cache. */
   sec = secfile_sections_by_name_prefix(file, TRIGGER_SECTION_PREFIX);
   section_list_iterate(sec, psection) {
-    const char *mtth, *title, *desc;
+    const char *title, *desc;
     int nresponses;
     bool repeatable;
     struct trigger *ptrigger;
@@ -4622,7 +4622,12 @@ static bool load_ruleset_triggers(struct section_file *file)
 
     repeatable = secfile_lookup_bool_default(file, FALSE, "%s.repeatable", sec_name);
 
-    mtth = secfile_lookup_str(file, "%s.mtth", sec_name);
+    mtth = secfile_lookup_int_default(file, 0, "%s.mtth", sec_name);
+    if (mtth < 0) {
+      ruleset_error(LOG_ERROR, "\"%s\" [%s] trigger mtth cannot be negative. value is %d", filename, sec_name, mtth);
+      ok = FALSE;
+      break;
+    }
 
     manual = secfile_lookup_bool_default(file, FALSE, "%s.manual", sec_name);
 
@@ -4657,7 +4662,7 @@ static bool load_ruleset_triggers(struct section_file *file)
     }
 
     requirement_vector_iterate(reqs, preq) {
-      trigger_req_append(ptrigger, *preq);
+      trigger_req_append(ptrigger, *preq, FALSE);
     } requirement_vector_iterate_end;
 
     reqs = lookup_req_list(file, sec_name, "nreqs", sec_name);
@@ -4666,7 +4671,7 @@ static bool load_ruleset_triggers(struct section_file *file)
       break;
     }
     requirement_vector_iterate(reqs, preq) {
-      trigger_req_append(ptrigger, *preq);
+      trigger_req_append(ptrigger, *preq, TRUE);
     } requirement_vector_iterate_end;
 
     trigger_signal_create(ptrigger);

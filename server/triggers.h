@@ -33,7 +33,7 @@ extern "C" {
  * Note the difference between trigger and trigger_type. */
 struct trigger {
   const char * name;
-  const char * mtth;
+  int mtth;
   bool repeatable;
   bool manual;
 
@@ -77,7 +77,7 @@ struct trigger *trigger_new(const char * name, const char * title, const char * 
         int mtth, bool repeatable, int num_responses, const char **responses,
         int default_response, int ai_response, bool manual);
 struct trigger *trigger_copy(struct trigger *old);
-void trigger_req_append(struct trigger *ptrigger, struct requirement req);
+void trigger_req_append(struct trigger *ptrigger, struct requirement req, bool negated);
 void trigger_signal_create(struct trigger *ptrigger);
 
 struct astring;

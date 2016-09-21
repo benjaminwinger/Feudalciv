@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 #include <string.h>
+#include <time.h>
+#include <stdlib.h>
 
 /* utility */
 #include "astring.h"
@@ -97,7 +99,7 @@ struct trigger *trigger_new(const char * name, const char * title, const char * 
   ptrigger->name = fc_strdup(name);
   ptrigger->title = title == NULL ? NULL : fc_strdup(title);
   ptrigger->desc = desc == NULL ? NULL : fc_strdup(desc);
-  ptrigger->mtth = mtth == NULL ? NULL : fc_strdup(mtth);
+  ptrigger->mtth = mtth;
   ptrigger->repeatable = repeatable;
   ptrigger->responses_num = num_responses;
   ptrigger->responses = fc_malloc(num_responses * sizeof(const char *));
@@ -142,7 +144,7 @@ struct trigger *trigger_copy(struct trigger *old)
           old->default_response, old->ai_response, old->manual);
 
   requirement_vector_iterate(&old->reqs, preq) {
-    trigger_req_append(new_trigger, *preq);
+    trigger_req_append(new_trigger, *preq, preq->negated);
   } requirement_vector_iterate_end;
 
   return new_trigger;
@@ -151,8 +153,9 @@ struct trigger *trigger_copy(struct trigger *old)
 /**************************************************************************
   Append requirement to trigger.
 **************************************************************************/
-void trigger_req_append(struct trigger *ptrigger, struct requirement req)
+void trigger_req_append(struct trigger *ptrigger, struct requirement req, bool negated)
 {
+  req.negated = negated;
   requirement_vector_append(&ptrigger->reqs, req);
 }
 
@@ -176,6 +179,7 @@ void trigger_signal_create(struct trigger *ptrigger)
 void trigger_cache_init(void)
 {
   initialized = TRUE;
+  srand(time(NULL));
 
   trigger_cache.triggers = trigger_list_new();
   trigger_cache.responses= trigger_response_list_new();
@@ -274,6 +278,7 @@ void get_trigger_signal_arg_list(const struct trigger * ptrigger, int * nargs, i
 {
   *nargs = 0;
   requirement_vector_iterate(&ptrigger->reqs, preq) {
+    if (preq->negated) continue; /* Negated requirements aren't passed as arguments */
     switch (preq->range) {
     case REQ_RANGE_WORLD:
       switch (preq->source.kind) {
@@ -314,9 +319,11 @@ void get_trigger_signal_arg_list(const struct trigger * ptrigger, int * nargs, i
     (*nargs)++;
   } requirement_vector_iterate_end;
 
-  /* Response is always last argument */
-  args[*nargs] = API_TYPE_INT;
-  (*nargs)++;
+  if (ptrigger->responses_num > 0) {
+    /* Response is always last argument */
+    args[*nargs] = API_TYPE_INT;
+    (*nargs)++;
+  }
 }
 
 /**************************************************************************
@@ -425,21 +432,23 @@ void trigger_by_name_array(const struct player *pplayer, const char * name, int 
   presponse->player = pplayer;
   presponse->turn_fired = game.info.turn;
 
-  len = strlen(ptrigger->desc);
-  newdesc = fc_strdup(ptrigger->desc);
-  for (i = 0; i < len; i++) {
-    if (newdesc[i] == '$') {
-      index = atoi(&newdesc[i + 1]);
-      if (index == 0 || index > nargs) continue;
-      tmp = trigger_arg_to_string((enum api_types)args[(index - 1) * 2], (void *)args[(index - 1) * 2 + 1]);
-      tmplen = strlen(tmp);
-      tmpdesc = fc_realloc(fc_strdup(newdesc), (len + tmplen) * sizeof(const char *));
-      strncpy(&tmpdesc[i], tmp, tmplen);
-      free(tmp);
-      strcpy(&tmpdesc[i + tmplen], &newdesc[i + (int)floor(log10(abs(index))) + 2]);
-      newdesc = tmpdesc;
-      len += tmplen;
-      i += tmplen;
+  if (ptrigger->desc != NULL) {
+    len = strlen(ptrigger->desc);
+    newdesc = fc_strdup(ptrigger->desc);
+    for (i = 0; i < len; i++) {
+      if (newdesc[i] == '$') {
+        index = atoi(&newdesc[i + 1]);
+        if (index == 0 || index > nargs) continue;
+        tmp = trigger_arg_to_string((enum api_types)args[(index - 1) * 2], (void *)args[(index - 1) * 2 + 1]);
+        tmplen = strlen(tmp);
+        tmpdesc = fc_realloc(fc_strdup(newdesc), (len + tmplen) * sizeof(const char *));
+        strncpy(&tmpdesc[i], tmp, tmplen);
+        FC_FREE(tmp);
+        strcpy(&tmpdesc[i + tmplen], &newdesc[i + (int)floor(log10(abs(index))) + 2]);
+        newdesc = tmpdesc;
+        len += tmplen;
+        i += tmplen;
+      }
     }
   }
 
@@ -463,7 +472,6 @@ void trigger_by_name(const struct player *pplayer, const char * name, int nargs,
 
   trigger_by_name_array(pplayer, name, nargs, arg_list);
   va_end(args);
-  FC_FREE(arg_list);
 }
 
 struct trigger_response * remove_trigger_response_from_cache(const struct player *pplayer, const char * name)
@@ -765,67 +773,129 @@ static bool req_matches_unit(struct requirement *preq, struct unit *punit)
     return utype_number(punit->utype) == utype_number(preq->source.value.utype);
   } else if (preq->source.kind == VUT_UTFLAG) {
     return utype_has_flag(punit->utype, preq->source.value.unitflag);
+  } else if (preq->source.kind == VUT_UCLASS) {
+    return uclass_number(unit_class(punit)) == uclass_number(preq->source.value.uclass);
+  } else if (preq->source.kind == VUT_UCFLAG) {
+    return uclass_has_flag(unit_class(punit), preq->source.value.unitclassflag);
+  }
+  return false;
+}
+
+static bool req_matches_player(struct requirement *preq, struct player *pplayer)
+{
+  switch (preq->source.kind) {
+  case VUT_GOVERNMENT:
+    return government_of_player(pplayer) == preq->source.value.govern;
+    break;
+  case VUT_ADVANCE:
+    return TECH_KNOWN == player_invention_state(pplayer, preq->source.value.advance);
+    break;
+  case VUT_TECHFLAG:
+    return player_knows_techs_with_flag(pplayer, preq->source.value.techflag);
+    break;
+  case VUT_NATION:
+    return nation_of_player(pplayer) == preq->source.value.nation;
+    break;
+  case VUT_AI_LEVEL:
+      return pplayer->ai_controlled && pplayer->ai_common.skill_level == preq->source.value.ai_level;
+    break;
+  case VUT_DIPLSTATE:
+    players_iterate_alive(otherplayer) {
+      if (player_number(pplayer) != player_number(otherplayer) && player_diplstate_get(pplayer, otherplayer) == preq->source.value.diplstate) {
+        return true;
+      }
+    } players_iterate_alive_end;
+    break;
+  }
+  return false;
+}
+
+static void check_trigger_reqs(struct trigger *ptrigger, struct requirement *preq, int nreqs, void** args, int index, struct player * triggerplayer, struct city * triggercity)
+{
+  if (nreqs == 0) {
+    if (rand() % (ptrigger->mtth + 1) == 0) {
+      trigger_by_name_array(triggerplayer, ptrigger->name, index / 2, args);
+    }
+    return;
+  }
+  bool requirements_met = FALSE;
+  fc_assert(index < ptrigger->reqs.size * 2);
+  switch (preq->range) {
+  case REQ_RANGE_WORLD:
+    switch (preq->source.kind) {
+    case VUT_MINYEAR:
+      if (game.info.year >= preq->source.value.minyear) {
+        requirements_met = TRUE;
+        args[index] = API_TYPE_INT;
+        args[index + 1] = game.info.year;
+        check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index + 2, triggerplayer, triggercity);
+        return;
+      }
+      break;
+    }
+  case REQ_RANGE_PLAYER:
+    if (triggerplayer == NULL) {
+      players_iterate_alive(pplayer) {
+        if (req_matches_player(preq, triggerplayer)) {
+          args[index] = API_TYPE_PLAYER;
+          args[index + 1] = triggerplayer;
+          check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index + 2, triggerplayer, triggercity);
+        }
+      } players_iterate_alive_end;
+    } else if (req_matches_player(preq, triggerplayer)) {
+      args[index] = API_TYPE_PLAYER;
+      args[index + 1] = triggerplayer;
+      check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index + 2, triggerplayer, triggercity);
+      return;
+    }
+    break;
+  case REQ_RANGE_CITY:
+    break;
+  case REQ_RANGE_CONTINENT:
+  case REQ_RANGE_ADJACENT:
+  case REQ_RANGE_CADJACENT:
+  case REQ_RANGE_LOCAL:
+    switch (preq->source.kind) {
+    case VUT_TERRAIN:
+      break;
+    case VUT_UTYPE:
+    case VUT_UTFLAG:
+    case VUT_UCLASS:
+    case VUT_UCFLAG:
+      if (triggerplayer == NULL) {
+        players_iterate_alive(pplayer) {
+          unit_list_iterate(pplayer->units, punit) {
+            if (req_matches_unit(preq, punit)) {
+              args[index] = API_TYPE_UNIT;
+              args[index + 1] = punit;
+              triggerplayer = pplayer;
+              check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index + 2, triggerplayer, triggercity);
+            }
+          } unit_list_iterate_end;
+        } players_iterate_alive_end;
+      } else {
+        unit_list_iterate(triggerplayer->units, punit) {
+          if (req_matches_unit(preq, punit)) {
+            args[index] = API_TYPE_UNIT;
+            args[index + 1] = punit;
+            check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index + 2, triggerplayer, triggercity);
+          }
+        } unit_list_iterate_end;
+      }
+      break;
+    }
+    break;
+  }
+  if (preq->negated && !requirements_met) {
+    check_trigger_reqs(ptrigger, preq + 1, nreqs - 1, args, index, triggerplayer, triggercity);
   }
 }
 
-void check_triggers()
-{
+void check_triggers() {
   trigger_list_iterate(trigger_cache.triggers, ptrigger) {
     if (ptrigger->manual) continue;
-    bool requirements_met = TRUE;
     void ** args = fc_calloc(ptrigger->reqs.size * 2, sizeof(void*));
-    int index = 0;
-    struct player * triggerplayer = NULL;
-    requirement_vector_iterate(&ptrigger->reqs, preq) {
-      fc_assert(index < ptrigger->reqs.size * 2);
-      switch (preq->range) {
-      case REQ_RANGE_WORLD:
-        switch (preq->source.kind) {
-        case VUT_MINYEAR:
-          if (game.info.year < preq->source.value.minyear) requirements_met = FALSE;
-          args[index] = API_TYPE_INT;
-          args[index + 1] = game.info.year;
-          break;
-        default:
-          continue;
-        }
-      case REQ_RANGE_PLAYER:
-        break;
-      case REQ_RANGE_CITY:
-        break;
-      case REQ_RANGE_CONTINENT:
-      case REQ_RANGE_ADJACENT:
-      case REQ_RANGE_CADJACENT:
-      case REQ_RANGE_LOCAL:
-        switch (preq->source.kind) {
-        case VUT_TERRAIN:
-          break;
-        case VUT_UTYPE:
-        case VUT_UTFLAG:
-        case VUT_UCLASS:
-        case VUT_UCFLAG:
-          players_iterate_alive(pplayer) {
-            unit_list_iterate(pplayer->units, punit) {
-              if (req_matches_unit(preq, punit)) {
-                args[index] = API_TYPE_UNIT;
-                args[index + 1] = punit;
-                triggerplayer = pplayer;
-              }
-            } unit_list_iterate_end;
-          } players_iterate_alive_end;
-          break;
-        default:
-          continue;
-        }
-        break;
-      }
-      index += 2;
-      if (preq->negated) requirements_met = !requirements_met;
-      if (!requirements_met) break;
-    } requirement_vector_iterate_end;
-    if (requirements_met && index == ptrigger->reqs.size * 2) {
-      trigger_by_name_array(triggerplayer, ptrigger->name, ptrigger->reqs.size, args);
-    }
-    FC_FREE(args);
+
+    check_trigger_reqs(ptrigger, ptrigger->reqs.p, ptrigger->reqs.size, args, 0, NULL, NULL);
   } trigger_list_iterate_end;
 }
