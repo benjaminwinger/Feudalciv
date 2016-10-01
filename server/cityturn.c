@@ -670,15 +670,9 @@ bool city_reduce_size(struct city *pcity, citizens pop_loss,
   }
 
   if (city_size_get(pcity) <= pop_loss) {
-
-    script_server_signal_emit("city_destroyed", 3,
-                              API_TYPE_CITY, pcity,
-                              API_TYPE_PLAYER, pcity->owner,
-                              API_TYPE_PLAYER, destroyer);
-
-    remove_city(pcity);
-    return FALSE;
+     pop_loss = city_size_get(pcity) - 1;
   }
+
   map_clear_border(pcity->tile);
   city_size_add(pcity, -pop_loss);
   map_claim_border(pcity->tile, pcity->owner);
