@@ -11,6 +11,7 @@ CLIENT_FILES =				\
 	isotrident.tilespec		\
 	trident.tilespec		\
 	stdsounds.soundspec		\
+	feudalciv.tilespec		\
 	helpdata.txt
 if CLIENT_GUI_XAW
 CLIENT_FILES += Freeciv
@@ -74,7 +75,8 @@ EXTRA_DIST = \
 	experimental.serv \
 	multiplayer.serv \
 	civ2civ3.serv \
-	feudalciv.serv
+	feudalciv.serv \
+	feudalciv.tilespec
 
 if CLIENT
 CLIENTDATADIRS = amplio2 misc flags buildings cimpletoon isotrident trident\
