@@ -1892,35 +1892,6 @@ void unit_enter_city(struct unit *punit, struct city *pcity, bool passenger)
     try_civil_war = TRUE;
   }
 
-  /* 
-   * We later remove a citizen. Lets check if we can save this since
-   * the city will be destroyed.
-   */
-  if (city_size_get(pcity) <= 1) {
-    int saved_id = pcity->id;
-
-    notify_player(pplayer, city_tile(pcity), E_UNIT_WIN_ATT, ftc_server,
-                  _("You destroy %s completely."),
-                  city_tile_link(pcity));
-    notify_player(cplayer, city_tile(pcity), E_CITY_LOST, ftc_server,
-                  _("%s has been destroyed by %s."), 
-                  city_tile_link(pcity), player_name(pplayer));
-    script_server_signal_emit("city_destroyed", 3,
-                              API_TYPE_CITY, pcity,
-                              API_TYPE_PLAYER, cplayer,
-                              API_TYPE_PLAYER, pplayer);
-
-    /* We cant't be sure of city existence after running some script */
-    if (city_exist(saved_id)) {
-      remove_city(pcity);
-    }
-
-    if (try_civil_war) {
-      (void) civil_war(cplayer);
-    }
-    return;
-  }
-
   coins = cplayer->economic.gold;
   coins = MIN(coins,
               fc_rand((coins / 20) + 1)
