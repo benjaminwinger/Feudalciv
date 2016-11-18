@@ -104,65 +104,66 @@ install-freeciv-qt: install-freeciv-common
 # install Freeciv environment
 
 COMMON_DLLS := \
-	SDL.dll \
-	SDL_mixer.dll \
-	exchndl.dll \
-	freetype6.dll \
-	intl.dll \
-	libMagickCore-6.Q16-1.dll \
-	libMagickWand-6.Q16-1.dll \
 	libatk-1.0-0.dll \
-	libbz2-2.dll \
-	libcurl.dll \
-	libcairo-2.dll \
-	libcairo-gobject-2.dll \
-	libeay32.dll \
+	libcurl-4.dll \
 	libffi-6.dll \
-	libfontconfig-1.dll \
-	libfreetype-6.dll \
-	libgcc_s_dw2-1.dll \
-	libgdk_pixbuf-2.0-0.dll \
-	libgio-2.0-0.dll \
-	libglib-2.0-0.dll \
+	libgdk-3-0.dll \
 	libgmodule-2.0-0.dll \
-	libgobject-2.0-0.dll \
-	libgthread-2.0-0.dll \
-	libiconv-2.dll \
-	libidn-11.dll \
-	libintl-8.dll \
-	liblzma-5.dll \
-	libogg-0.dll \
-	libpango-1.0-0.dll \
+	libharfbuzz-0.dll \
+	libjasper-1.dll \
 	libpangocairo-1.0-0.dll \
-	libpangowin32-1.0-0.dll \
 	libpixman-1-0.dll \
-	libpng14-14.dll \
-	libpng15-15.dll \
-	libpthread-2.dll \
-	libsqlite3-0.dll \
-	libvorbis-0.dll \
-	libvorbisfile-3.dll \
-	libxml2-2.dll \
-	pthreadGC2.dll \
-	ssleay32.dll \
-	zlib1.dll
+	libstdc++-6.dll \
+	zlib1.dll \
+	libbz2-1.dll \
+	libeay32.dll \
+	libfontconfig-1.dll \
+	libgdk_pixbuf-2.0-0.dll \
+	libgobject-2.0-0.dll \
+	libiconv-2.dll \
+	libjpeg-8.dll \
+	libpangoft2-1.0-0.dll \
+	libpng16-16.dll \
+	libwinpthread-1.dll \
+	libcairo-2.dll \
+	libepoxy-0.dll \
+	libfreetype-6.dll \
+	libgio-2.0-0.dll \
+	libgraphite2.dll \
+	libidn-11.dll \
+	liblzma-5.dll \
+	libpangowin32-1.0-0.dll \
+	libreadline6.dll \
+	pdcurses.dll \
+	libcairo-gobject-2.dll \
+	libexpat-1.dll \
+	libgcc_s_sjlj-1.dll \
+	libglib-2.0-0.dll \
+	libgtk-3-0.dll \
+	libgtk-win32-2.0-0.dll \
+	libintl-8.dll \
+	libpango-1.0-0.dll \
+	libpcre-1.dll \
+	libssh2-1.dll \
+	ssleay32.dll
+
 
 install-env-common:
 	# add DLLs
-	cp -R $(addprefix /bin/, $(COMMON_DLLS)) install-$(GUI)
+	cp -R $(addprefix /usr/i686-w64-mingw32/bin/, $(COMMON_DLLS)) install-$(GUI)
 
 GTK3_DLLS := \
 	libgdk-3-0.dll \
 	libgtk-3-0.dll
 
 install-env-gtk3: install-env-common
-	cp -R $(addprefix /bin/, $(GTK3_DLLS)) install-$(GUI)
+	cp -R $(addprefix /usr/i686-w64-mingw32/bin/, $(GTK3_DLLS)) install-$(GUI)
 	# add additional GTK+3 files
 	mkdir -p install-$(GUI)/etc
 	cp -R /etc/gtk-3.0 install-$(GUI)/etc/
 	mkdir -p install-$(GUI)/lib/gtk-3.0/
 	cp -R /lib/gtk-3.0/3.0.0 install-$(GUI)/lib/gtk-3.0/
-	cp -R /share/locale install-$(GUI)/share/
+	cp -R /usr/share/locale install-$(GUI)/share/
 	find install-$(GUI)/share/locale -type f -not -name "freeciv*.mo" -and -not -name gtk30.mo -delete
 
 DEFAULT_FCMP_DLLS := \
@@ -171,13 +172,13 @@ DEFAULT_FCMP_DLLS := \
 
 install-env-default-fcmp: install-env-common
 	# add DLLs
-	cp -R $(addprefix /bin/, $(DEFAULT_FCMP_DLLS)) install-$(GUI)
+	cp -R $(addprefix /usr/i686-w64-mingw32/bin/, $(DEFAULT_FCMP_DLLS)) install-$(GUI)
 	# add additional GTK+2 files
 	mkdir -p install-$(GUI)/etc
 	cp -R /etc/gtk-2.0 install-$(GUI)/etc/
 	mkdir -p install-$(GUI)/lib/gtk-2.0/
 	cp -R /lib/gtk-2.0/2.10.0 install-$(GUI)/lib/gtk-2.0/
-	cp -R /share/locale install-$(GUI)/share/
+	cp -R /usr/share/locale install-$(GUI)/share/
 	find install-$(GUI)/share/locale -type f -not -name "freeciv*.mo" -and -not -name gtk20.mo -delete
 
 install-env-gtk2: install-env-default-fcmp
@@ -190,7 +191,7 @@ SDL_DLLS := \
 
 install-env-sdl: install-env-default-fcmp
 	# add DLLs
-	cp -R $(addprefix /bin/, $(SDL_DLLS)) install-$(GUI)
+	cp -R $(addprefix /usr/i686-w64-mingw32/bin/, $(SDL_DLLS)) install-$(GUI)
 
 QT_DLLS := \
 	libstdc++-6.dll \
@@ -200,7 +201,7 @@ QT_DLLS := \
 
 install-env-qt: install-env-common
 	# add DLLs
-	cp -R $(addprefix /bin/, $(QT_DLLS)) install-$(GUI)
+	cp -R $(addprefix /usr/i686-w64-mingw32/bin/, $(QT_DLLS)) install-$(GUI)
 	# add additional Qt files
 	cp -R /plugins install-$(GUI)/
 	cp -R /share/locale install-$(GUI)/share/
@@ -212,6 +213,8 @@ installer-common: clean-install-common install-freeciv-$(GUI) install-env-$(GUI)
 	# extract Freeciv version
 	$(eval FREECIV_VERSION := $(shell ../../fc_version))
 	# create NSIS script
+	cp ../../crosser/client/freeciv-$(GUI).exe ../../crosser/server/freeciv-server.exe ../../crosser/tools/freeciv-manual.exe ../../crosser/tools/freeciv-mp-$(GUI).exe install-$(GUI)
+	rm install-$(GUI)/freeciv-$(GUI) install-$(GUI)/freeciv-server install-$(GUI)/freeciv-manual install-$(GUI)/freeciv-mp-$(GUI)
 	./create-freeciv-$(GUI)-nsi.sh install-$(GUI) $(FREECIV_VERSION) > Freeciv-$(FREECIV_VERSION)-$(GUI).nsi
 	# create installer executable
 	mkdir -p Output
