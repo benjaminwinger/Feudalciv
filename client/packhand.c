@@ -230,6 +230,13 @@ static struct unit *unpackage_unit(const struct packet_unit_info *packet)
     punit->client.transported_by = -1;
   }
 
+  /* Commander / commanded information. */
+  if (packet->commanded) {
+    punit->client.commander = packet->commander;
+  } else {
+    punit->client.commander = -1;
+  }
+
   punit->battlegroup = packet->battlegroup;
   punit->has_orders = packet->has_orders;
   punit->orders.length = packet->orders_length;
@@ -298,6 +305,13 @@ unpackage_short_unit(const struct packet_unit_short_info *packet)
     punit->client.transported_by = packet->transported_by;
   } else {
     punit->client.transported_by = -1;
+  }
+
+  /* Commander / commanded information. */
+  if (packet->commanded) {
+    punit->client.commander = packet->commander;
+  } else {
+    punit->client.commander = -1;
   }
 
   return punit;
@@ -394,7 +408,7 @@ void handle_city_remove(int city_id)
 void handle_unit_remove(int unit_id)
 {
   struct unit *punit = game_unit_by_number(unit_id);
-  struct unit_list *cargos;
+  struct unit_list *cargos, *attached;
   struct player *powner;
   bool need_economy_report_update;
 
@@ -428,6 +442,20 @@ void handle_unit_remove(int unit_id)
     unit_transport_unload(punit);
   }
   punit->client.transported_by = -1;
+
+  /* Detach units if this is a commander. */
+  attached = unit_commander_attached(punit);
+  if (unit_list_size(attached) > 0) {
+    unit_list_iterate(attached, pattached) {
+      unit_detach(pattached);
+    } unit_list_iterate_end;
+  }
+
+  /* Detach unit if it is attached. */
+  if (unit_commander_get(punit)) {
+    unit_detach(punit);
+  }
+  punit->client.commander = -1;
 
   agents_unit_remove(punit);
   editgui_notify_object_changed(OBJTYPE_UNIT, punit->id, TRUE);
@@ -1373,6 +1401,7 @@ void handle_unit_info(const struct packet_unit_info *packet)
   punit = unpackage_unit(packet);
   if (handle_unit_packet_common(punit)) {
     punit->client.transported_by = -1;
+    punit->client.commander = -1;
     unit_virtual_destroy(punit);
   }
 }
@@ -1450,6 +1479,7 @@ static bool handle_unit_packet_common(struct unit *packet_unit)
     if (punit->activity != packet_unit->activity
         || cmp_act_tgt(&punit->activity_target, &packet_unit->activity_target)
         || punit->client.transported_by != packet_unit->client.transported_by
+        || punit->client.commander != packet_unit->client.commander
         || punit->client.occupied != packet_unit->client.occupied
 	|| punit->has_orders != packet_unit->has_orders
 	|| punit->orders.repeat != packet_unit->orders.repeat
@@ -1495,6 +1525,17 @@ static bool handle_unit_packet_common(struct unit *packet_unit)
         }
 
         punit->client.transported_by = packet_unit->client.transported_by;
+      }
+
+      if (punit->client.commander
+          != packet_unit->client.commander) {
+        if (packet_unit->client.commander == -1) {
+          /* The unit was detached from its commander. The check for a new
+           * commander is done below. */
+          unit_detach(punit);
+        }
+
+        punit->client.commander = packet_unit->client.commander;
       }
 
       if (punit->client.occupied != packet_unit->client.occupied) {
@@ -1707,7 +1748,7 @@ static bool handle_unit_packet_common(struct unit *packet_unit)
               punit->id, punit->homecity,
               (pcity ? city_name(pcity) : "(unknown)"));
 
-    repaint_unit = !unit_transported(punit);
+    repaint_unit = !unit_transported(punit) && !unit_attached(punit);
     agents_unit_new(punit);
 
     /* Check if we should link cargo units.
@@ -1762,6 +1803,21 @@ static bool handle_unit_packet_common(struct unit *packet_unit)
     }
   }
 
+  /* Check if we have to attach the unit to a commander. */
+  if (punit->client.commander != -1) {
+    struct unit *pcmdr
+      = game_unit_by_number(packet_unit->client.commander);
+
+    /* Attach unit only if commander is known by the client. For full
+     * unit info the commander should be known. The server sends
+     * commanders first; see send_unit_info(). */
+    if (pcmdr && pcmdr != unit_commander_get(punit)) {
+      /* First, we have to unload the unit from its old commander. */
+      unit_detach(punit);
+      unit_attach(punit, pcmdr, TRUE);
+    }
+  }
+
   if (unit_is_in_focus(punit)
       || get_focus_unit_on_tile(unit_tile(punit))
       || (moved && get_focus_unit_on_tile(old_tile))) {
@@ -1813,6 +1869,12 @@ void handle_unit_short_info(const struct packet_unit_short_info *packet)
         unit_transport_unload(punit);
       }
       punit->client.transported_by = -1;
+
+      /* Detach unit if it is attached. */
+      if (unit_commander_get(punit)) {
+        unit_detach(punit);
+      }
+      punit->client.commander = -1;
 
       client_remove_unit(punit);
     } else {
@@ -1872,6 +1934,7 @@ void handle_unit_short_info(const struct packet_unit_short_info *packet)
   punit = unpackage_short_unit(packet);
   if (handle_unit_packet_common(punit)) {
     punit->client.transported_by = -1;
+    punit->client.commander = -1;
     unit_virtual_destroy(punit);
   }
 }

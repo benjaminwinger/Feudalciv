@@ -43,12 +43,13 @@
   units only), the effects of wonders for sea units, and any veteran
   bonuses.
 ****************************************************************************/
-int unit_move_rate(const struct unit *punit)
+static int unit_move_rate_cic(const struct unit *punit, bool recursive)
 {
   int move_rate = 0;
   int base_move_rate;
   struct unit_class *pclass;
   const struct veteran_level *vlevel;
+  struct unit *cic = unit_commander_in_chief_get(punit);
 
   fc_assert_ret_val(punit != NULL, 0);
 
@@ -75,9 +76,23 @@ int unit_move_rate(const struct unit *punit)
     move_rate = MIN(pclass->min_speed, base_move_rate);
   }
 
+  /* Units can only move as fast as the slowest unit in their army */
+  if (cic != NULL && !recursive) {
+    unit_attached_iterate(cic, pattached) {
+      int attached_move_rate = unit_move_rate_cic(pattached, TRUE);
+      if (attached_move_rate < move_rate) {
+        move_rate = attached_move_rate;
+      }
+    } unit_attached_iterate_end;
+  }
+
   return move_rate;
 }
 
+int unit_move_rate(const struct unit *punit)
+{
+  return unit_move_rate_cic(punit, FALSE);
+}
 
 /****************************************************************************
   Return TRUE iff the unit can be a defender at its current location.  This

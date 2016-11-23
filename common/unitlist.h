@@ -84,6 +84,10 @@ bool units_have_type_flag(const struct unit_list *punits,
 bool units_are_occupied(const struct unit_list *punits);
 bool units_can_load(const struct unit_list *punits);
 bool units_can_unload(const struct unit_list *punits);
+bool units_have_attached(const struct unit_list *punits);
+bool units_can_attach(const struct unit_list *punits);
+bool units_can_detach(const struct unit_list *punits);
+
 bool units_have_activity_on_tile(const struct unit_list *punits,
 				 enum unit_activity activity);
 

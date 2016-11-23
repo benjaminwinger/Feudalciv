@@ -257,6 +257,8 @@ static void present_unit_activate_close_callback(GtkWidget * w,
 						 gpointer data);
 static void unit_load_callback(GtkWidget * w, gpointer data);
 static void unit_unload_callback(GtkWidget * w, gpointer data);
+static void unit_attach_callback(GtkWidget * w, gpointer data);
+static void unit_detach_callback(GtkWidget * w, gpointer data);
 static void unit_sentry_callback(GtkWidget * w, gpointer data);
 static void unit_fortify_callback(GtkWidget * w, gpointer data);
 static void unit_disband_callback(GtkWidget * w, gpointer data);
@@ -2234,6 +2236,26 @@ static gboolean present_unit_callback(GtkWidget * w, GdkEventButton * ev,
       gtk_widget_set_sensitive(item, FALSE);
     }
 
+    item = gtk_menu_item_new_with_mnemonic(_("_Attach unit"));
+    g_signal_connect(item, "activate",
+      G_CALLBACK(unit_attach_callback),
+      GINT_TO_POINTER(punit->id));
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+    if (NULL == commander_for_unit(punit)) {
+      gtk_widget_set_sensitive(item, FALSE);
+    }
+
+    item = gtk_menu_item_new_with_mnemonic(_("_Detach unit"));
+    g_signal_connect(item, "activate",
+      G_CALLBACK(unit_detach_callback),
+      GINT_TO_POINTER(punit->id));
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+
+    if (!unit_attached(punit)) {
+      gtk_widget_set_sensitive(item, FALSE);
+    }
+
     item = gtk_menu_item_new_with_mnemonic(_("_Sentry unit"));
     g_signal_connect(item, "activate",
       G_CALLBACK(unit_sentry_callback),
@@ -2446,6 +2468,32 @@ static void unit_unload_callback(GtkWidget * w, gpointer data)
 
   if (NULL != punit) {
     request_unit_unload(punit);
+  }
+}
+
+/****************************************************************
+  User has requested unit to be attached to commander
+*****************************************************************/
+static void unit_attach_callback(GtkWidget * w, gpointer data)
+{
+  struct unit *punit =
+    player_unit_by_number(client_player(), (size_t)data);
+
+  if (NULL != punit) {
+    request_unit_attach(punit, NULL);
+  }
+}
+
+/****************************************************************
+  User has requested unit to be detached from commander
+*****************************************************************/
+static void unit_detach_callback(GtkWidget * w, gpointer data)
+{
+  struct unit *punit =
+    player_unit_by_number(client_player(), (size_t)data);
+
+  if (NULL != punit) {
+    request_unit_detach(punit);
   }
 }
 

@@ -682,7 +682,8 @@ Return a pointer to a visible unit, if there is one.
 **************************************************************************/
 struct unit *find_visible_unit(struct tile *ptile)
 {
-  struct unit *panyowned = NULL, *panyother = NULL, *ptptother = NULL;
+  struct unit *panyowned = NULL, *panyother = NULL, *ptptother = NULL,
+              *pcmdrowned = NULL, *pcmdrother = NULL;
 
   /* If no units here, return nothing. */
   if (unit_list_size(ptile->units)==0) {
@@ -717,29 +718,38 @@ struct unit *find_visible_unit(struct tile *ptile)
 
   /* Iterate through the units to find the best one we prioritize this way:
        1: owned transporter.
-       2: any owned unit
-       3: any transporter
-       4: any unit
+       2: owned commander
+       3: any owned unit
+       4: any transporter
+       5: any commander
+       6: any unit
      (always return first in stack). */
   unit_list_iterate(ptile->units, punit)
     if (unit_owner(punit) == client.conn.playing) {
       if (!unit_transported(punit)) {
         if (get_transporter_capacity(punit) > 0) {
 	  return punit;
+        } else if (!unit_commander_get(punit) &&
+                utype_has_flag(unit_type(punit), UTYF_COMMANDER)) {
+      pcmdrowned = punit;
         } else if (!panyowned) {
 	  panyowned = punit;
         }
       }
-    } else if (!ptptother && !unit_transported(punit)) {
+    } else if (!ptptother && !pcmdrother && !unit_transported(punit)) {
       if (get_transporter_capacity(punit) > 0) {
 	ptptother = punit;
+      } else if (!unit_commander_get(punit) &&
+              utype_has_flag(unit_type(punit), UTYF_COMMANDER)) {
+    pcmdrother = punit;
       } else if (!panyother) {
 	panyother = punit;
       }
     }
   unit_list_iterate_end;
 
-  return (panyowned ? panyowned : (ptptother ? ptptother : panyother));
+  return (pcmdrowned ? pcmdrowned : (panyowned ? panyowned :
+              (ptptother ? ptptother : (pcmdrother ? pcmdrother : panyother))));
 }
 
 /**************************************************************************
@@ -1336,6 +1346,37 @@ struct unit *request_unit_unload_all(struct unit *punit)
 }
 
 /**************************************************************************
+  Returns one of the unit of the commander which can have focus next.
+**************************************************************************/
+struct unit *request_unit_detach_all(struct unit *punit)
+{
+  struct tile *ptile = unit_tile(punit);
+  struct unit *plast = NULL;
+
+  if (get_num_attached_units(punit) == 0) {
+    create_event(unit_tile(punit), E_BAD_COMMAND, ftc_client,
+                 _("Only transporter units can be unloaded."));
+    return NULL;
+  }
+
+  unit_list_iterate(ptile->units, pattached) {
+    if (unit_transport_get(pattached) == punit) {
+      request_unit_unload(pattached);
+
+      if (pattached->activity == ACTIVITY_SENTRY) {
+	request_new_unit_activity(pattached, ACTIVITY_IDLE);
+      }
+
+      if (unit_owner(pattached) == unit_owner(punit)) {
+	plast = pattached;
+      }
+    }
+  } unit_list_iterate_end;
+
+  return plast;
+}
+
+/**************************************************************************
   Send unit airlift request to server.
 **************************************************************************/
 void request_unit_airlift(struct unit *punit, struct city *pcity)
@@ -1724,6 +1765,52 @@ void request_unit_unload(struct unit *pcargo)
         && pcargo->activity == ACTIVITY_SENTRY) {
       /* Activate the unit. */
       dsend_packet_unit_change_activity(&client.conn, pcargo->id,
+                                        ACTIVITY_IDLE, S_LAST);
+    }
+  }
+}
+
+/****************************************************************************
+  Send a request to the server that the unit be attached to the commander
+
+  If ptransporter is NULL a suitable transporter will be chosen.
+****************************************************************************/
+void request_unit_attach(struct unit *punit, struct unit *pcommander)
+{
+  if (!pcommander) {
+    pcommander = commander_for_unit(punit);
+  }
+
+  if (pcommander
+      && can_client_issue_orders()
+      && utype_has_flag(unit_type(pcommander), UTYF_COMMANDER)) {
+    dsend_packet_unit_attach(&client.conn, punit->id, pcommander->id);
+
+    /* Sentry the unit.  Don't request_unit_sentry since this can give a
+     * recursive loop. */
+    dsend_packet_unit_change_activity(&client.conn, punit->id,
+                                      ACTIVITY_SENTRY, S_LAST);
+  }
+}
+
+/****************************************************************************
+  Send a request to the server that a unit be detached from its current
+  commander.
+****************************************************************************/
+void request_unit_detach(struct unit *punit)
+{
+  struct unit *pcommander = unit_commander_get(punit);
+
+  if (can_client_issue_orders()
+      && pcommander
+      && can_unit_detach(punit, pcommander)
+      && can_unit_survive_at_tile(punit, unit_tile(punit))) {
+    dsend_packet_unit_detach(&client.conn, punit->id, pcommander->id);
+
+    if (unit_owner(punit) == client.conn.playing
+        && punit->activity == ACTIVITY_SENTRY) {
+      /* Activate the unit. */
+      dsend_packet_unit_change_activity(&client.conn, punit->id,
                                         ACTIVITY_IDLE, S_LAST);
     }
   }
@@ -2308,7 +2395,8 @@ void do_move_unit(struct unit *punit, struct unit *target_unit)
 
   if (!was_teleported
       && punit->activity != ACTIVITY_SENTRY
-      && !unit_transported(punit)) {
+      && !unit_transported(punit)
+      && !unit_attached(punit)) {
     audio_play_sound(unit_type(punit)->sound_move,
                      unit_type(punit)->sound_move_alt);
   }
@@ -2330,7 +2418,8 @@ void do_move_unit(struct unit *punit, struct unit *target_unit)
 
   unit_list_remove(src_tile->units, punit);
 
-  if (!unit_transported(punit)) {
+  if (!unit_transported(punit)
+      && !unit_attached(punit)) {
     /* Mark the unit as moving unit, then find_visible_unit() won't return
      * it. It is especially useful to don't draw many times the unit when
      * refreshing the canvas. */
@@ -2353,7 +2442,7 @@ void do_move_unit(struct unit *punit, struct unit *target_unit)
   unit_tile_set(punit, dst_tile);
   unit_list_prepend(dst_tile->units, punit);
 
-  if (!unit_transported(punit)) {
+  if (!unit_transported(punit) && !unit_attached(punit)) {
     /* For find_visible_unit(), see above. */
     punit_moving = NULL;
 
@@ -2924,6 +3013,27 @@ void key_unit_unload_all(void)
        * If there is no unit unloaded (which shouldn't happen, but could if
        * the caller doesn't check if the transporter is loaded), the we
        * don't do anything. */
+      punit->client.focus_status = FOCUS_WAIT;
+    } unit_list_iterate_end;
+    unit_focus_set(pnext_focus);
+  }
+}
+
+/**************************************************************************
+  Handle user 'detach all' input
+**************************************************************************/
+void key_unit_detach_all(void)
+{
+  struct unit *pnext_focus = NULL, *plast;
+
+  unit_list_iterate(get_units_in_focus(), punit) {
+    if ((plast = request_unit_detach_all(punit))) {
+      pnext_focus = plast;
+    }
+  } unit_list_iterate_end;
+
+  if (pnext_focus) {
+    unit_list_iterate(get_units_in_focus(), punit) {
       punit->client.focus_status = FOCUS_WAIT;
     } unit_list_iterate_end;
     unit_focus_set(pnext_focus);

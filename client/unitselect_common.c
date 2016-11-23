@@ -113,7 +113,7 @@ struct usdata_hash *usdlg_data_new(const struct tile *ptile)
   unit_list_iterate(ptile->units, punit) {
     /* Save all top level transporters on the tile (SELLOC_UNITS) as 'idle'
      * units (ACTIVITY_IDLE). */
-    if (!unit_transported(punit)) {
+    if (!unit_transported(punit) && !unit_attached(punit)) {
       struct usdata *data;
 
       usdata_hash_lookup(ushash, utype_index(unit_type(punit)), &data);

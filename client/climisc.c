@@ -93,6 +93,14 @@ void client_remove_unit(struct unit *punit)
     } unit_list_iterate_end;
   }
 
+  /* Check attached status. */
+  unit_detach(punit);
+  if (get_num_attached_units(punit) > 0) {
+    unit_list_iterate(unit_commander_attached(punit), pattached) {
+      unit_detach(pattached);
+    } unit_list_iterate_end;
+  }
+
   control_unit_killed(punit);
   game_remove_unit(punit);
   punit = NULL;

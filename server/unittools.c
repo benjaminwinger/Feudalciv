@@ -1222,11 +1222,15 @@ void bounce_unit(struct unit *punit, bool verbose)
   }
 
   /* Didn't find a place to bounce the unit, going to disband it.
-   * Try to bounce transported units. */
+   * Try to bounce transported and attached units. */
   if (0 < get_transporter_occupancy(punit)) {
     pcargo_units = unit_transport_cargo(punit);
     unit_list_iterate(pcargo_units, pcargo) {
       bounce_unit(pcargo, verbose);
+    } unit_list_iterate_end;
+    pcargo_units = unit_commander_attached(punit);
+    unit_list_iterate(pcargo_units, pattached) {
+      bounce_unit(pattached, verbose);
     } unit_list_iterate_end;
   }
 
@@ -1250,7 +1254,7 @@ static void throw_units_from_illegal_cities(struct player *pplayer,
 {
   struct tile *ptile;
   struct city *pcity;
-  struct unit *ptrans;
+  struct unit *ptrans, *pcmdr;
   struct unit_list *pcargo_units;
 
   /* Unload undesired units from transports, if possible. */
@@ -1271,15 +1275,35 @@ static void throw_units_from_illegal_cities(struct player *pplayer,
     }
   } unit_list_iterate_end;
 
-  /* Bounce units except transported ones which will be bounced with their
-   * transport. */
+  /* Detach undesired units from commanders, if possible. */
+  unit_list_iterate(pplayer->units, punit) {
+    ptile = unit_tile(punit);
+    pcity = tile_city(ptile);
+    if (NULL != pcity
+        && !pplayers_allied(city_owner(pcity), pplayer)
+        && 0 < get_num_attached_units(punit)) {
+      pcargo_units = unit_commander_attached(punit);
+      unit_list_iterate(pcargo_units, pattached) {
+        if (!pplayers_allied(unit_owner(pattached), pplayer)) {
+          if (can_unit_exist_at_tile(pattached, ptile)) {
+            unit_detach_send(pattached);
+          }
+        }
+      } unit_list_iterate_end;
+    }
+  } unit_list_iterate_end;
+
+  /* Bounce units except transported/attached  ones which will be bounced
+   * with their transport/commander. */
   unit_list_iterate_safe(pplayer->units, punit) {
     ptile = unit_tile(punit);
     pcity = tile_city(ptile);
     if (NULL != pcity
         && !pplayers_allied(city_owner(pcity), pplayer)) {
       ptrans = unit_transport_get(punit);
-      if (NULL == ptrans || pplayer != unit_owner(ptrans)) {
+      pcmdr = unit_commander_get(punit);
+      if ((NULL == ptrans || pplayer != unit_owner(ptrans))
+          && (NULL == pcmdr || pplayer != unit_owner(pcmdr))) {
         bounce_unit(punit, verbose);
       }
     }
@@ -2353,6 +2377,13 @@ void package_unit(struct unit *punit, struct packet_unit_info *packet)
     packet->transported = TRUE;
     packet->transported_by = unit_transport_get(punit)->id;
   }
+  if (!unit_attached(punit)) {
+    packet->commanded = FALSE;
+    packet->commander = 0;
+  } else {
+    packet->commanded = TRUE;
+    packet->commander = unit_commander_get(punit)->id;
+  }
   packet->occupied = (get_transporter_occupancy(punit) > 0);
   packet->battlegroup = punit->battlegroup;
   packet->has_orders = punit->has_orders;
@@ -2435,6 +2466,13 @@ void package_short_unit(struct unit *punit,
     packet->transported = TRUE;
     packet->transported_by = unit_transport_get(punit)->id;
   }
+  if (!unit_attached(punit)) {
+    packet->commanded = FALSE;
+    packet->commander = 0;
+  } else {
+    packet->commanded = TRUE;
+    packet->commander = unit_commander_get(punit)->id;
+  }
 
   packet->goes_out_of_sight = FALSE;
 }
@@ -2492,6 +2530,10 @@ void send_unit_info(struct conn_list *dest, struct unit *punit)
     fc_assert_action(i < ARRAY_SIZE(info), break);
     package_unit(ptrans, &info[i++]);
   } unit_transports_iterate_end;
+  unit_commanders_iterate(punit, pcmdr) {
+    fc_assert_action(i < ARRAY_SIZE(info), break);
+    package_unit(pcmdr, &info[i++]);
+  } unit_commanders_iterate_end;
   info_num = i;
   package_short_unit(punit, &sinfo, UNIT_INFO_IDENTITY, 0, FALSE);
   pdata = punit->server.moving;
@@ -3011,6 +3053,61 @@ void unit_transport_unload_send(struct unit *punit)
   send_unit_info(NULL, ptrans);
 }
 
+/****************************************************************************
+  Attach the unit to the commander, and tell everyone.
+****************************************************************************/
+void unit_attach_send(struct unit *punit, struct unit *pcmdr)
+{
+  fc_assert_ret(punit != NULL);
+  fc_assert_ret(pcmdr != NULL);
+
+  unit_attach(punit, pcmdr, FALSE);
+
+  send_unit_info(NULL, punit);
+  send_unit_info(NULL, pcmdr);
+}
+
+/****************************************************************************
+  Detach the unit from the commander, and tell everyone.
+****************************************************************************/
+void unit_detach_send(struct unit *punit)
+{
+  struct unit *pcmdr;
+
+  fc_assert_ret(punit);
+
+  pcmdr = unit_commander_get(punit);
+
+  fc_assert_ret(pcmdr);
+
+  unit_detach(punit);
+
+  send_unit_info(NULL, punit);
+  send_unit_info(NULL, pcmdr);
+}
+
+/****************************************************************************
+  Load unit to transport, send transport's loaded status to everyone.
+****************************************************************************/
+static void unit_commander_attach_cmdr_status(struct unit *punit,
+                                              struct unit *pcmdr,
+                                              bool force)
+{
+  bool had_attached;
+
+  fc_assert_ret(punit != NULL);
+  fc_assert_ret(pcmdr != NULL);
+
+  had_attached = get_num_units_attached(pcmdr) > 0;
+
+  unit_attach(punit, pcmdr, force);
+
+  if (!had_attached) {
+    /* Commander's attached status changed */
+    send_unit_info(NULL, pcmdr);
+  }
+}
+
 /*****************************************************************
   This function is passed to unit_list_sort() to sort a list of
   units according to their win chance against autoattack_x|y.
@@ -3181,7 +3278,7 @@ static void wakeup_neighbor_sentries(struct unit *punit)
 
     unit_list_iterate(unit_tile(punit)->units, aunit) {
       /* Consider only units not transported. */
-      if (!unit_transported(aunit)) {
+      if (!unit_transported(aunit) && !unit_attached(aunit)) {
         count++;
       }
     } unit_list_iterate_end;
@@ -3428,7 +3525,7 @@ static struct unit_move_data *unit_move_data(struct unit *punit,
   unit_tile_set(punit, pdesttile);
   unit_list_prepend(pdesttile->units, punit);
 
-  if (unit_transported(punit)) {
+  if (unit_transported(punit) || unit_attached(punit)) {
     /* Silently free orders since they won't be applicable anymore. */
     free_unit_orders(punit);
   }
@@ -3490,7 +3587,7 @@ bool unit_move(struct unit *punit, struct tile *pdesttile, int move_cost)
   struct player *pplayer;
   struct tile *psrctile;
   struct city *pcity;
-  struct unit *ptransporter;
+  struct unit *ptransporter, *pcommander;
   struct packet_unit_info src_info, dest_info;
   struct packet_unit_short_info src_sinfo, dest_sinfo;
   struct unit_move_data_list *plist =
@@ -3520,6 +3617,16 @@ bool unit_move(struct unit *punit, struct tile *pdesttile, int move_cost)
     /* Send updated information to anyone watching that transporter
      * was unloading cargo. */
     send_unit_info(NULL, ptransporter);
+  }
+
+  /* Detach the unit if under command. */
+  pcommander = unit_commander_get(punit);
+  if (pcommander != NULL) {
+    /* Unload unit _before_ setting the new tile! */
+    unit_detach(punit);
+    /* Send updated information to anyone watching that commander
+     * was unloading cargo. */
+    send_unit_info(NULL, pcommander);
   }
 
   /* Wakup units next to us before we move. */
@@ -3569,6 +3676,12 @@ bool unit_move(struct unit *punit, struct tile *pdesttile, int move_cost)
     pdata = unit_move_data(pcargo, psrctile, pdesttile);
     unit_move_data_list_append(plist, pdata);
   } unit_cargo_iterate_end;
+
+  /* Move all attached units. */
+  unit_attached_iterate(punit, pattached) {
+    pdata = unit_move_data(pattached, psrctile, pdesttile);
+    unit_move_data_list_append(plist, pdata);
+  } unit_attached_iterate_end;
 
   /* Get data for 'punit'. */
   pdata = unit_move_data_list_front(plist);

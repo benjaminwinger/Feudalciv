@@ -1995,6 +1995,19 @@ static struct unit *sell_random_unit(struct player *pplayer,
     }
   } unit_list_iterate_end;
 
+  /* Check if unit is commanding other units from punitlist,
+   * and sell one of those (recursively) instead. */
+  unit_list_iterate(unit_commander_attached(punit), pattached) {
+    if (pattached->upkeep[O_GOLD] > 0) { /* Optimization, do not iterate over punitlist
+                                       * if we are sure that pcargo is not in it. */
+      unit_list_iterate(punitlist, p2) {
+        if (pattached == p2) {
+          unit_list_append(cargo, pattached);
+        }
+      } unit_list_iterate_end;
+    }
+  } unit_list_iterate_end;
+
   if (unit_list_size(cargo) > 0) {
     struct unit *ret = sell_random_unit(pplayer, cargo);
 

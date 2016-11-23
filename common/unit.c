@@ -37,6 +37,7 @@
 #include "tech.h"
 #include "traderoutes.h"
 #include "unitlist.h"
+#include "unittype.h"
 
 #include "unit.h"
 
@@ -50,6 +51,13 @@ struct cargo_iter {
   int depth;
 };
 #define CARGO_ITER(iter) ((struct cargo_iter *) (iter))
+
+struct attached_iter {
+  struct iterator vtable;
+  const struct unit_list_link *links[GAME_TRANSPORT_MAX_RECURSIVE];
+  int depth;
+};
+#define ATTACHED_ITER(iter) ((struct attached_iter *) (iter))
 
 /**************************************************************************
 bribe unit
@@ -1324,6 +1332,79 @@ bool can_unit_do_activity_targeted_at(const struct unit *punit,
   return FALSE;
 }
 
+/****************************************************************************
+  Return TRUE iff the given unit can be attached to the commander.
+****************************************************************************/
+bool can_unit_attach(const struct unit *punit, const struct unit *pcmdr)
+{
+  /* This function needs to check EVERYTHING. */
+
+  /* Check positions of the units.  Of course you can't attach a unit to
+   * a commander on a different tile... */
+  if (!same_pos(unit_tile(punit), unit_tile(pcmdr))) {
+    return FALSE;
+  }
+
+  /* Cannot attach if cargo is already attached to something else. */
+  if (unit_attached(punit)) {
+    return FALSE;
+  }
+
+  if (!punit || !pcmdr || punit == pcmdr) {
+    return FALSE;
+  }
+
+  /* Double-check ownership of the units: you can attach to an allied unit
+   * (of course only allied units can be on the same tile). */
+  if (!pplayers_allied(unit_owner(punit), unit_owner(pcmdr))) {
+    return FALSE;
+  }
+
+  /* Make sure the commander is actually a commander. */
+  if (!utype_has_flag(unit_type(pcmdr), UTYF_COMMANDER)) {
+    return FALSE;
+  }
+
+  /* Check transport depth. */
+  if (GAME_TRANSPORT_MAX_RECURSIVE
+      < 1 + unit_commander_depth(pcmdr) + unit_command_depth(punit)) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/****************************************************************************
+  Return TRUE iff the given unit can be unloaded from its current
+  transporter.
+
+  This function checks everything *except* the legality of the position
+  after the unloading.  The caller may also want to call
+  can_unit_exist_at_tile() to check this, unless the unit is unloading and
+  moving at the same time.
+****************************************************************************/
+bool can_unit_detach(const struct unit *punit, const struct unit *pcmdr)
+{
+  if (!punit || !pcmdr) {
+    return FALSE;
+  }
+
+  /* Make sure the unit's commander exists and is known. */
+  if (unit_commander_get(punit) != pcmdr) {
+    return FALSE;
+  }
+
+  /* commander must be in city or base to unload cargo that doesn't also
+   * have a commander. */
+  if (!utype_has_flag(unit_type(punit), UTYF_COMMANDER)
+      && !tile_city(unit_tile(pcmdr))
+      && !tile_has_native_base(unit_tile(pcmdr), unit_type(pcmdr))) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 /**************************************************************************
   Assign a new task to a unit. Doesn't account for changed_from.
 **************************************************************************/
@@ -1881,8 +1962,6 @@ struct unit *unit_virtual_create(struct player *pplayer, struct city *pcity,
   /* A unit new and fresh ... */
   punit->fuel = utype_fuel(unit_type(punit));
   punit->hp = unit_type(punit)->hp;
-  punit->moves_left = unit_move_rate(punit);
-  punit->moved = FALSE;
 
   punit->ai_controlled = FALSE;
   punit->paradropped = FALSE;
@@ -1890,6 +1969,14 @@ struct unit *unit_virtual_create(struct player *pplayer, struct city *pcity,
 
   punit->transporter = NULL;
   punit->transporting = unit_list_new();
+
+  punit->commander = NULL;
+  punit->attached = unit_list_new();
+
+  /* Must be done after attached is initialized to prevent assertion
+   * failure since move rate depends on attached units */
+  punit->moves_left = unit_move_rate(punit);
+  punit->moved = FALSE;
 
   set_unit_activity(punit, ACTIVITY_IDLE);
   punit->battlegroup = BATTLEGROUP_NONE;
@@ -1917,6 +2004,7 @@ struct unit *unit_virtual_create(struct player *pplayer, struct city *pcity,
   } else {
     punit->client.focus_status = FOCUS_AVAIL;
     punit->client.transported_by = -1;
+    punit->client.commander = -1;
     punit->client.colored = FALSE;
   }
 
@@ -1935,6 +2023,10 @@ void unit_virtual_destroy(struct unit *punit)
   unit_transport_unload(punit);
   fc_assert(!unit_transported(punit));
 
+  /* Detach unit if attached. */
+  unit_detach(punit);
+  fc_assert(!unit_attached(punit));
+
   /* Check for transported units. Use direct access to the list. */
   if (unit_list_size(punit->transporting) != 0) {
     /* Unload all units. */
@@ -1942,10 +2034,22 @@ void unit_virtual_destroy(struct unit *punit)
       unit_transport_unload(pcargo);
     } unit_list_iterate_safe_end;
   }
-  fc_assert(unit_list_size(punit->transporting) == 0);
+
+  /* Check for attached units. Use direct access to the list. */
+  if (unit_list_size(punit->attached) != 0) {
+    /* Detach all units. */
+    unit_list_iterate_safe(punit->attached, pattached) {
+      unit_transport_unload(pattached);
+    } unit_list_iterate_safe_end;
+  }
+  fc_assert(unit_list_size(punit->attached) == 0);
 
   if (punit->transporting) {
     unit_list_destroy(punit->transporting);
+  }
+
+  if (punit->attached) {
+    unit_list_destroy(punit->attached);
   }
 
   CALL_FUNC_EACH_AI(unit_free, punit);
@@ -2101,6 +2205,117 @@ struct unit *transporter_for_unit(const struct unit *pcargo)
   } unit_list_iterate_end;
 
   return best_trans;
+}
+
+/****************************************************************************
+  Return how many units are attached to the commander
+****************************************************************************/
+int get_num_attached_units(const struct unit *pcommander)
+{
+  fc_assert_ret_val(pcommander, -1);
+
+  return unit_list_size(pcommander->attached);
+}
+
+/****************************************************************************
+  Find the best commander at the given location for the unit.
+****************************************************************************/
+struct unit *commander_for_unit(const struct unit *punit)
+{
+  struct unit_list *tile_units = unit_tile(punit)->units;
+  struct unit *best_cmdr = NULL;
+  struct {
+    bool has_orders, is_idle, owned;
+    int depth, outermost_moves_left;
+  } cur, best = { FALSE };
+
+  unit_list_iterate(tile_units, pcmdr) {
+    if (!utype_has_flag(unit_type(pcmdr), UTYF_COMMANDER)
+        || punit == pcmdr) {
+      continue;
+    } else if (best_cmdr == NULL) {
+      best_cmdr = pcmdr;
+    }
+
+    /* Gather data from commander stack in a single pass, for use in
+     * various conditions below. */
+    cur.owned = unit_nationality(punit) == unit_nationality(pcmdr);
+    cur.has_orders = unit_has_orders(pcmdr);
+    cur.outermost_moves_left = pcmdr->moves_left;
+    {
+      const struct unit *pcmdrcmdr = unit_commander_get(pcmdr);
+
+      while (NULL != pcmdrcmdr) {
+        if (unit_has_orders(pcmdrcmdr)) {
+          cur.has_orders = TRUE;
+        }
+        cur.outermost_moves_left = pcmdrcmdr->moves_left;
+        pcmdrcmdr = unit_commander_get(pcmdrcmdr);
+      }
+    }
+
+    /* Criteria for deciding the 'best' commander to attach to.
+     * The following tests are applied in order; earlier ones have
+     * lexicographically greater significance than later ones. */
+
+    /* Commanders of your nationality are more preferable to allied commanders */
+    if (best_cmdr != pcmdr) {
+      if (cur.owned && !best.owned) {
+        best_cmdr = pcmdr;
+      } else if (!cur.owned && best.owned) {
+        continue;
+      }
+    }
+
+    /* Else, commanders which are less deeply nested are preferable. */
+    cur.depth = unit_command_depth(pcmdr);
+    if (best_cmdr != pcmdr) {
+      if (cur.depth < best.depth) {
+        best_cmdr = pcmdr;
+      } else if (cur.depth > best.depth) {
+        continue;
+      }
+    }
+
+    /* Else, commanders which have orders, or are attached to commanders with orders,
+     * are less preferable to commander stacks without orders (to
+     * avoid attaching to units that are just passing through). */
+    if (best_cmdr != pcmdr) {
+      if (!cur.has_orders && best.has_orders) {
+        best_cmdr = pcmdr;
+      } else if (cur.has_orders && !best.has_orders) {
+        continue;
+      }
+    }
+
+    /* Else, commanders which are idle are preferable (giving players
+     * some control over attaching) -- this does not check commanders
+     * of commanders. */
+    cur.is_idle = (pcmdr->activity == ACTIVITY_IDLE);
+    if (best_cmdr != pcmdr) {
+      if (cur.is_idle && !best.is_idle) {
+        best_cmdr = pcmdr;
+      } else if (!cur.is_idle && best.is_idle) {
+        continue;
+      }
+    }
+
+    /* Else, commanders where the outermost commander has more
+     * moves left are preferable */
+    if (best_cmdr != pcmdr) {
+      if (cur.outermost_moves_left > best.outermost_moves_left) {
+        best_cmdr = pcmdr;
+      } else if (cur.outermost_moves_left < best.outermost_moves_left) {
+        continue;
+      }
+    }
+
+    fc_assert(best_cmdr == pcmdr);
+    best = cur;
+
+  } unit_list_iterate_end;
+
+  return best_cmdr;
 }
 
 /****************************************************************************
@@ -2663,6 +2878,261 @@ struct iterator *cargo_iter_init(struct cargo_iter *iter,
   it->next = cargo_iter_next;
   it->valid = cargo_iter_valid;
   iter->links[0] = unit_list_head(unit_transport_cargo(ptrans));
+  iter->depth = (NULL != iter->links[0] ? 1 : 0);
+
+  return it;
+}
+
+/*****************************************************************************
+  Attach punit to pcommander. Returns TRUE on success.
+*****************************************************************************/
+bool unit_attach(struct unit *punit, struct unit *pcommander, bool force)
+{
+  fc_assert_ret_val(pcommander != NULL, FALSE);
+  fc_assert_ret_val(punit != NULL, FALSE);
+
+  fc_assert_ret_val(!unit_list_search(pcommander->attached, punit), FALSE);
+
+  if (force || can_unit_attach(punit, pcommander)) {
+    punit->commander = pcommander;
+    unit_list_append(pcommander->attached, punit);
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/*****************************************************************************
+  Detach punit from pcommander. Returns TRUE on success.
+*****************************************************************************/
+bool unit_detach(struct unit *punit)
+{
+  struct unit *pcommander;
+
+  fc_assert_ret_val(punit != NULL, FALSE);
+
+  if (!unit_attached(punit)) {
+    /* 'pcargo' is not transported. */
+    return FALSE;
+  }
+
+  /* Get the transporter; must not be defined on the client! */
+  pcommander = unit_commander_get(punit);
+  if (pcommander) {
+    bool success;
+
+    /* 'pcargo' and 'ptrans' should be on the same tile. */
+    fc_assert(same_pos(unit_tile(punit), unit_tile(pcommander)));
+    /* It is an error if 'pcargo' can not be removed from the 'ptrans'. */
+    success = unit_list_remove(pcommander->attached, punit);
+    fc_assert(success);
+  }
+
+  /* For the server (also safe for the client). */
+  punit->commander = NULL;
+
+  return TRUE;
+}
+
+/*****************************************************************************
+  Returns TRUE iff the unit is attached to a commander.
+*****************************************************************************/
+bool unit_attached(const struct unit *punit)
+{
+  fc_assert_ret_val(punit != NULL, FALSE);
+
+  /* The unit is attached if a commander unit is set or, (for the client)
+   * if the commander field is set. */
+  if (punit->commander != NULL
+      || (!is_server() && punit->client.commander != -1)) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/*****************************************************************************
+  Returns the commander of the unit or NULL if it is not commanded.
+*****************************************************************************/
+struct unit *unit_commander_get(const struct unit *punit)
+{
+  fc_assert_ret_val(punit!= NULL, NULL);
+
+  return punit->commander;
+}
+
+/*****************************************************************************
+  Returns the commander of the given unit at the highest level or NULL
+  if it is not commanded
+*****************************************************************************/
+struct unit *unit_commander_in_chief_get(const struct unit *punit)
+{
+  fc_assert_ret_val(punit!= NULL, NULL);
+  struct unit *pcommander = (struct unit*) punit;
+  while (pcommander->commander != NULL) {
+    pcommander = pcommander->commander;
+  }
+  return pcommander;
+}
+
+/*****************************************************************************
+  Returns the list of attached units.
+*****************************************************************************/
+struct unit_list *unit_commander_attached(const struct unit *pcommander)
+{
+  fc_assert_ret_val(pcommander != NULL, NULL);
+  fc_assert_ret_val(pcommander->attached != NULL, NULL);
+
+  return pcommander->attached;
+}
+
+/****************************************************************************
+  Returns whether 'pcargo' in 'ptrans' is a valid transport. Note that
+  'pcargo' can already be (but doesn't need) loaded into 'ptrans'.
+
+  It may fail if one of the cargo unit has the same type of one of the
+  transporter unit or if one of the cargo unit can transport one of
+  the transporters.
+****************************************************************************/
+bool unit_commander_check(const struct unit *punit,
+                          const struct unit *pcommander)
+{
+  const struct unit_type *unit_utype = unit_type(punit);
+  const struct unit_type *commander_utype = unit_type(pcommander);
+
+  /* Verify that pcommander is a commander */
+  if (!utype_has_flag(commander_utype, UTYF_COMMANDER)) {
+    return FALSE;
+  }
+
+  /* Check that pcommander's  parents are commanders. */
+  unit_commanders_iterate(pcommander, pparent) {
+    if (!unit_transport_check_one(unit_utype, unit_type(pparent))) {
+      return FALSE;
+    }
+  } unit_transports_iterate_end;
+
+  return TRUE;
+}
+
+/****************************************************************************
+  Returns whether 'punit' is commanded by 'pcommander', either directly
+  or indirectly.
+****************************************************************************/
+bool unit_commanded_by(const struct unit *punit, const struct unit *pcommander)
+{
+  if (!utype_has_flag(unit_type(pcommander), UTYF_COMMANDER)) {
+    return FALSE;
+  }
+
+  unit_commanders_iterate(punit, plevel) {
+    if (pcommander == plevel) {
+      return TRUE;
+    }
+  } unit_commanders_iterate_end;
+  return FALSE;
+}
+
+/****************************************************************************
+  Returns the number of unit layers within commander 'pcommander'.
+****************************************************************************/
+int unit_command_depth(const struct unit *pcommander)
+{
+  struct attached_iter iter;
+  struct iterator *it;
+  int depth = 0;
+
+  for (it = attached_iter_init(&iter, pcommander); iterator_valid(it);
+       iterator_next(it)) {
+    if (iter.depth > depth) {
+      depth = iter.depth;
+    }
+  }
+  return depth;
+}
+
+/****************************************************************************
+  Returns the number of commander layers for unit 'punit'.
+****************************************************************************/
+int unit_commander_depth(const struct unit *punit)
+{
+  int level = 0;
+
+  unit_commanders_iterate(punit, plevel) {
+    level++;
+  } unit_commanders_iterate_end;
+  return level;
+}
+
+/****************************************************************************
+  Returns the size of the unit cargo iterator.
+****************************************************************************/
+size_t attached_iter_sizeof(void)
+{
+  return sizeof(struct attached_iter);
+}
+
+/****************************************************************************
+  Get the unit of the attached iterator.
+****************************************************************************/
+static void *attached_iter_get(const struct iterator *it)
+{
+  const struct attached_iter *iter = ATTACHED_ITER(it);
+
+  return unit_list_link_data(iter->links[iter->depth - 1]);
+}
+
+/****************************************************************************
+  Try to find next unit for the cargo iterator.
+****************************************************************************/
+static void attached_iter_next(struct iterator *it)
+{
+  struct attached_iter *iter = ATTACHED_ITER(it);
+  const struct unit_list_link *piter = iter->links[iter->depth - 1];
+  const struct unit_list_link *pnext;
+
+  /* Variant 1: unit has attached units. */
+  pnext = unit_list_head(unit_commander_attached(unit_list_link_data(piter)));
+  if (NULL != pnext) {
+    fc_assert(iter->depth < ARRAY_SIZE(iter->links));
+    iter->links[iter->depth++] = pnext;
+    return;
+  }
+
+  do {
+    /* Variant 2: there are other units at same level. */
+    pnext = unit_list_link_next(piter);
+    if (NULL != pnext) {
+      iter->links[iter->depth - 1] = pnext;
+      return;
+    }
+
+    /* Variant 3: return to previous level, and do same tests. */
+    piter = iter->links[iter->depth-- - 2];
+  } while (0 < iter->depth);
+}
+
+/****************************************************************************
+  Return whether the iterator is still valid.
+****************************************************************************/
+static bool attached_iter_valid(const struct iterator *it)
+{
+  return (0 < ATTACHED_ITER(it)->depth);
+}
+
+/****************************************************************************
+  Initialize the cargo iterator.
+****************************************************************************/
+struct iterator *attached_iter_init(struct attached_iter *iter,
+                                 const struct unit *pcommander)
+{
+  struct iterator *it = ITERATOR(iter);
+
+  it->get = attached_iter_get;
+  it->next = attached_iter_next;
+  it->valid = attached_iter_valid;
+  iter->links[0] = unit_list_head(unit_commander_attached(pcommander));
   iter->depth = (NULL != iter->links[0] ? 1 : 0);
 
   return it;

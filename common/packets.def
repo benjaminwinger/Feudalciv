@@ -826,10 +826,11 @@ PACKET_UNIT_INFO = 63; sc, lsend, is-game-info, cancel(PACKET_UNIT_SHORT_INFO)
 
   UINT8 veteran;
   BOOL ai, paradropped;
-  BOOL occupied, transported, done_moving;
+  BOOL occupied, transported, done_moving, commanded;
 
   UNIT_TYPE type;
   UNIT transported_by; /* Only valid if transported is set. */
+  UNIT commander; /* Only valid if commanded is set */
   UINT8 movesleft_old;  remove-cap(extended_move_rate)
   UINT16 movesleft_new; add-cap(extended_move_rate)
   UINT8 hp, fuel;
@@ -865,12 +866,13 @@ PACKET_UNIT_SHORT_INFO = 64; sc, lsend, is-game-info, cancel(PACKET_UNIT_INFO)
   UNIT_TYPE type;
 
   UINT8 veteran;
-  BOOL occupied, goes_out_of_sight, transported;
+  BOOL occupied, goes_out_of_sight, transported, commanded;
 
   UINT8 hp, activity;
   BASE activity_tgt_base;
   ROAD activity_tgt_road;
   UNIT transported_by; /* Only valid if transported is set. */
+  UNIT commander; /* Only valid if commanded is set. */
 
   /* in packet only, not in unit struct */
   UINT8 packet_use;	/* see enum unit_info_use */
@@ -948,6 +950,16 @@ end
 # Unload the given cargo from the transporter.
 PACKET_UNIT_UNLOAD = 76; cs, dsend
   UNIT cargo_id, transporter_id;
+end
+
+# Attach the given unit to the commander
+PACKET_UNIT_ATTACH = 240; cs, dsend
+  UNIT unit_id, commander_id;
+end
+
+# Detach the given unit from the commander
+PACKET_UNIT_DETACH = 241; cs, dsend
+  UNIT unit_id, commander_id;
 end
 
 PACKET_UNIT_UPGRADE = 77; cs, dsend
@@ -1905,6 +1917,7 @@ PACKET_EDIT_UNIT = 210; cs, handle-per-conn, handle-via-packet
   BOOL paradropped;
   BOOL done_moving;
   UNIT transported_by;
+  UNIT commander;
 end
 
 PACKET_EDIT_CITY_CREATE = 211; cs, handle-per-conn, dsend

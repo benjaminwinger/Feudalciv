@@ -266,6 +266,50 @@ bool units_can_unload(const struct unit_list *punits)
 }
 
 /****************************************************************************
+  Return TRUE iff any of the units is a commander that has attached units
+****************************************************************************/
+bool units_have_attached(const struct unit_list *punits)
+{
+  unit_list_iterate(punits, punit) {
+    if (get_num_attached_units(punit) > 0) {
+      return TRUE;
+    }
+  } unit_list_iterate_end;
+
+  return FALSE;
+}
+
+/****************************************************************************
+  Returns TRUE iff any of these units can attach.
+****************************************************************************/
+bool units_can_attach(const struct unit_list *punits)
+{
+  unit_list_iterate(punits, punit) {
+    if (commander_for_unit(punit)) {
+      return TRUE;
+    }
+  } unit_list_iterate_end;
+
+  return FALSE;
+}
+
+/****************************************************************************
+  Return TRUE iff any of these units can detach.
+****************************************************************************/
+bool units_can_detach(const struct unit_list *punits)
+{
+  unit_list_iterate(punits, punit) {
+    if (unit_attached(punit)
+        && can_unit_detach(punit, unit_commander_get(punit))
+        && can_unit_exist_at_tile(punit, unit_tile(punit))) {
+      return TRUE;
+    }
+  } unit_list_iterate_end;
+
+  return FALSE;
+}
+
+/****************************************************************************
   Return TRUE iff any of the units' tiles have the activity running
   on them.
 ****************************************************************************/

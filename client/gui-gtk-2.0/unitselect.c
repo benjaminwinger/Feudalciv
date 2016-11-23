@@ -859,6 +859,14 @@ static void usdlg_tab_append_units(struct unit_select_dialog *pdialog,
     } unit_list_iterate_end;
   }
 
+  if (get_num_attached_units(punit) > 0) {
+    unit_list_iterate(unit_commander_attached(punit), pattached) {
+      GtkTreeIter it_attached;
+
+      usdlg_tab_append_units(pdialog, loc, act, pattached, TRUE, &it_attached, it);
+    } unit_list_iterate_end;
+  }
+
   if (!transported && unit_is_in_focus(punit)) {
     pdialog->tabs[loc].path
       = gtk_tree_model_get_path(GTK_TREE_MODEL(store), it);

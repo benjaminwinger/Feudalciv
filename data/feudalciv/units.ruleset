@@ -457,7 +457,7 @@ uk_happy      = 0
 uk_shield     = 0
 uk_food       = 0
 uk_gold       = 2
-flags         = "Unique"
+flags         = "Unique","Commander"
 roles         = "DefendGood", "FirstBuild"
 helptext      = _("\
 Saxon noblemen and their personal armies\

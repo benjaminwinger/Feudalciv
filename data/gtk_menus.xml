@@ -99,6 +99,10 @@
       <menuitem action="UNIT_UNLOAD" />
       <menuitem action="UNIT_UNLOAD_TRANSPORTER" />
       <separator />
+      <menuitem action="UNIT_ATTACH" />
+      <menuitem action="UNIT_DETACH" />
+      <menuitem action="UNIT_DETACH_COMMANDER" />
+      <separator />
       <menuitem action="UNIT_HOMECITY" />
       <menuitem action="UNIT_UPGRADE" />
       <menuitem action="UNIT_CONVERT" />

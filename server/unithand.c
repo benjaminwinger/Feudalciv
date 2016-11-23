@@ -1420,6 +1420,22 @@ bool unit_move_handling(struct unit *punit, struct tile *pdesttile,
     return FALSE;
   }
 
+  if (!utype_has_flag(punit->utype, UTYF_COMMANDER)
+      && !utype_has_flag(punit->utype, UTYF_CIVILIAN)
+      && punit->commander == NULL) {
+    return FALSE;
+  }
+
+  if (utype_has_flag(punit->utype, UTYF_COMMANDER)) {
+    unit_list_iterate(punit->attached, pattached) {
+      if (pattached->moves_left <= 0) {
+        notify_player(pplayer, unit_tile(pattached), E_BAD_COMMAND, ftc_server,
+                      _("This unit has no moves left."));
+        return FALSE;
+      }
+    } unit_list_iterate_end;
+  }
+
   /*** Phase 2: Special abilities checks ***/
 
   /* Caravans.  If city is allied (inc. ours) we would have a popup
@@ -1696,7 +1712,6 @@ bool unit_move_handling(struct unit *punit, struct tile *pdesttile,
     int move_cost = map_move_cost_unit(punit, pdesttile);
 
     unit_move(punit, pdesttile, move_cost);
-
     return TRUE;
   } else {
     return FALSE;
@@ -2276,6 +2291,75 @@ void handle_unit_unload(struct player *pplayer, int cargo_id, int trans_id)
 
   /* Unload the unit and send out info to clients. */
   unit_transport_unload_send(pcargo);
+}
+
+/****************************************************************************
+  Handle a client request to attach the given unit to the given commander.
+****************************************************************************/
+void handle_unit_attach(struct player *pplayer, int unit_id, int cmdr_id)
+{
+  struct unit *punit = player_unit_by_number(pplayer, unit_id);
+  struct unit *pcmdr = game_unit_by_number(cmdr_id);
+
+  if (NULL == punit) {
+    /* Probably died or bribed. */
+    log_verbose("handle_unit_load() invalid unit %d", unit_id);
+    return;
+  }
+
+  if (NULL == pcmdr) {
+    /* Probably died or bribed. */
+    log_verbose("handle_unit_load() invalid commander %d", cmdr_id);
+    return;
+  }
+
+  /* A player may only attach their units, but they may be attached into
+   * other player's commanders, depending on the rules in
+   * can_unit_load(). */
+  if (!can_unit_attach(punit, pcmdr)) {
+    return;
+  }
+
+  /* Load the unit and send out info to clients. */
+  unit_attach_send(punit, pcmdr);
+}
+
+/****************************************************************************
+  Handle a client request to detach the given unit from the given comander.
+****************************************************************************/
+void handle_unit_detach(struct player *pplayer, int unit_id, int cmdr_id)
+{
+  struct unit *punit = game_unit_by_number(unit_id);
+  struct unit *pcmdr = game_unit_by_number(cmdr_id);
+
+  if (NULL == punit) {
+    /* Probably died or bribed. */
+    log_verbose("handle_unit_unload() invalid cargo %d", unit_id);
+    return;
+  }
+
+  if (NULL == pcmdr) {
+    /* Probably died or bribed. */
+    log_verbose("handle_unit_unload() invalid transport %d", cmdr_id);
+    return;
+  }
+
+  /* You are allowed to unload a unit if it is yours or if the transporter
+   * is yours. */
+  if (unit_owner(punit) != pplayer && unit_owner(pcmdr) != pplayer) {
+    return;
+  }
+
+  if (!can_unit_unload(punit, pcmdr)) {
+    return;
+  }
+
+  if (!can_unit_survive_at_tile(punit, unit_tile(punit))) {
+    return;
+  }
+
+  /* Unload the unit and send out info to clients. */
+  unit_detach_send(punit);
 }
 
 /**************************************************************************

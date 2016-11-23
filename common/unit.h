@@ -169,6 +169,9 @@ struct unit {
   struct unit *transporter;   /* This unit is transported by ... */
   struct unit_list *transporting; /* This unit transports ... */
 
+  struct unit *commander; /* commander in command of this unit */
+  struct unit_list *attached; /* units under the command of this unit */
+
   /* The battlegroup ID: defined by the client but stored by the server. */
 #define MAX_NUM_BATTLEGROUPS (4)
 #define BATTLEGROUP_NONE (-1)
@@ -191,6 +194,7 @@ struct unit {
       int transported_by; /* Used for unit_short_info packets where we can't
                            * be sure that the information about the
                            * transporter is known. */
+      int commander;
       bool occupied;      /* TRUE if at least one cargo on the transporter. */
 
       /* Equivalent to pcity->client.color. Only for F_CITIES units. */
@@ -298,6 +302,8 @@ bool can_unit_do_activity_base(const struct unit *punit,
                                Base_type_id base);
 bool can_unit_do_activity_road(const struct unit *punit,
                                Road_type_id road);
+bool can_unit_attach(const struct unit *punit, const struct unit *pcmdr);
+bool can_unit_detach(const struct unit *punit, const struct unit *pcmdr);
 void set_unit_activity(struct unit *punit, enum unit_activity new_activity);
 void set_unit_activity_targeted(struct unit *punit,
 				enum unit_activity new_activity,
@@ -377,6 +383,9 @@ void free_unit_orders(struct unit *punit);
 int get_transporter_occupancy(const struct unit *ptrans);
 struct unit *transporter_for_unit(const struct unit *pcargo);
 
+int get_num_attached_units(const struct unit *pcommander);
+struct unit *commander_for_unit(const struct unit *punit);
+
 enum unit_upgrade_result unit_upgrade_test(const struct unit *punit,
                                            bool is_free);
 enum unit_upgrade_result unit_upgrade_info(const struct unit *punit,
@@ -407,6 +416,19 @@ bool unit_contained_in(const struct unit *pcargo, const struct unit *ptrans);
 int unit_cargo_depth(const struct unit *pcargo);
 int unit_transport_depth(const struct unit *ptrans);
 
+bool unit_attach(struct unit *punit, struct unit *pcommander,
+                         bool force);
+bool unit_detach(struct unit *punit);
+struct unit *unit_commander_get(const struct unit *punit);
+struct unit *unit_commander_in_chief_get(const struct unit *punit);
+bool unit_attached(const struct unit *punit);
+struct unit_list *unit_commander_attached(const struct unit *pcommander);
+bool unit_commander_check(const struct unit *punit,
+                          const struct unit *pcommander);
+bool unit_attached_to(const struct unit *punit, const struct unit *pcommander);
+int unit_command_depth(const struct unit *punit);
+int unit_commander_depth(const struct unit *pcommander);
+
 /* Iterate all transporters carrying '_pcargo', directly or indirectly. */
 #define unit_transports_iterate(_pcargo, _ptrans) {                         \
   struct unit *_ptrans;                                                     \
@@ -423,6 +445,23 @@ struct iterator *cargo_iter_init(struct cargo_iter *iter,
   generic_iterate(struct cargo_iter, struct unit *, _pcargo,                \
                   cargo_iter_sizeof, cargo_iter_init, _ptrans)
 #define unit_cargo_iterate_end generic_iterate_end
+
+/* Iterate all commanders of '_punit', directly or indirectly. */
+#define unit_commanders_iterate(_punit, _pcommander) {                         \
+  struct unit *_pcommander;                                                     \
+  for (_pcommander = unit_commander_get(_punit); NULL != _pcommander;              \
+       _pcommander = unit_commander_get(_pcommander)) {
+#define unit_commanders_iterate_end }}
+
+struct attached_iter;
+size_t attached_iter_sizeof(void) fc__attribute((const));
+
+struct iterator *attached_iter_init(struct attached_iter *iter,
+                                 const struct unit *pcommander);
+#define unit_attached_iterate(_pcommander, _punit)                                \
+  generic_iterate(struct attached_iter, struct unit *, _punit,                \
+                  attached_iter_sizeof, attached_iter_init, _pcommander)
+#define unit_attached_iterate_end generic_iterate_end
 
 #ifdef __cplusplus
 }

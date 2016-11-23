@@ -992,6 +992,35 @@ static void unit_unload_transporter_callback(GtkAction *action,
 }
 
 /****************************************************************
+  Action "UNIT_ATTACH" callback.
+*****************************************************************/
+static void unit_attach_callback(GtkAction *action, gpointer data)
+{
+  unit_list_iterate(get_units_in_focus(), punit) {
+    request_unit_attach(punit, NULL);
+  } unit_list_iterate_end;
+}
+
+/****************************************************************
+  Action "UNIT_DETACH" callback.
+*****************************************************************/
+static void unit_detach_callback(GtkAction *action, gpointer data)
+{
+  unit_list_iterate(get_units_in_focus(), punit) {
+    request_unit_detach(punit);
+  } unit_list_iterate_end;
+}
+
+/****************************************************************
+  Action "UNIT_UNLOAD_TRANSPORTER" callback.
+*****************************************************************/
+static void unit_detach_commander_callback(GtkAction *action,
+                                             gpointer data)
+{
+  key_unit_detach_all();
+}
+
+/****************************************************************
   Action "UNIT_HOMECITY" callback.
 *****************************************************************/
 static void unit_homecity_callback(GtkAction *action, gpointer data)
@@ -1628,6 +1657,13 @@ static GtkActionGroup *get_unit_group(void)
       {"UNIT_UNLOAD_TRANSPORTER", NULL, _("U_nload All From Transporter"),
        "<Shift>t", NULL, G_CALLBACK(unit_unload_transporter_callback)},
 
+      {"UNIT_ATTACH", NULL, _("_Attach"),
+       "j", NULL, G_CALLBACK(unit_attach_callback)},
+      {"UNIT_DETACH", NULL, _("_Detach"),
+       "k", NULL, G_CALLBACK(unit_detach_callback)},
+      {"UNIT_DETACH_COMMANDER", NULL, _("D_etach All From Commander"),
+       "<Shift>k", NULL, G_CALLBACK(unit_detach_commander_callback)},
+
       {"UNIT_HOMECITY", NULL, _("Set _Home City"),
        "h", NULL, G_CALLBACK(unit_homecity_callback)},
       {"UNIT_UPGRADE", NULL, _("Upgr_ade"),
@@ -2170,7 +2206,13 @@ void real_menus_update(void)
                       units_can_load(punits));
   menus_set_sensitive(unit_group, "UNIT_UNLOAD",
                       units_can_unload(punits));
-  menus_set_sensitive(unit_group, "UNIT_UNSENTRY", 
+  menus_set_sensitive(unit_group, "UNIT_DETACH_COMMANDER",
+                      units_have_attached(punits));
+  menus_set_sensitive(unit_group, "UNIT_ATTACH",
+                      units_can_attach(punits));
+  menus_set_sensitive(unit_group, "UNIT_DETACH",
+                      units_can_detach(punits));
+  menus_set_sensitive(unit_group, "UNIT_UNSENTRY",
                       units_have_activity_on_tile(punits,
                                                   ACTIVITY_SENTRY));
   menus_set_sensitive(unit_group, "AUTO_SETTLER",

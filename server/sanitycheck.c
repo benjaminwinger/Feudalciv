@@ -353,6 +353,7 @@ static void check_units(const char *file, const char *function, int line)
       struct city *pcity;
       struct city *phome;
       struct unit *ptrans = unit_transport_get(punit);
+      struct unit *pcmdr = unit_commander_get(punit);
 
       SANITY_CHECK(unit_owner(punit) == pplayer);
 
@@ -422,6 +423,14 @@ static void check_units(const char *file, const char *function, int line)
 
         /* Transporter capacity will be checked when transporter itself
          * is checked */
+      }
+
+      if (pcmdr != NULL) {
+        /* Make sure the commander is on the tile. */
+        SANITY_CHECK(same_pos(unit_tile(punit), unit_tile(pcmdr)));
+
+        /* Check that the unit is listed as attached. */
+        SANITY_CHECK(unit_list_search(unit_commander_attached(pcmdr),
       }
 
       /* Check that cargo is marked as transported with this unit */
