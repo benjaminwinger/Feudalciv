@@ -2418,6 +2418,13 @@ void do_move_unit(struct unit *punit, struct unit *target_unit)
 
   unit_list_remove(src_tile->units, punit);
 
+  if (unit_attached(punit) && unit_list_size(src_tile->units) == 0) {
+    /* Hack to fix tile not refreshing after commander moves due to attached units
+     * being silently updated. This doesn't happen for transporters though, so this
+     * shouldn't be necessary */
+    refresh_unit_mapcanvas(punit, src_tile, TRUE, FALSE);
+  }
+
   if (!unit_transported(punit)
       && !unit_attached(punit)) {
     /* Mark the unit as moving unit, then find_visible_unit() won't return
